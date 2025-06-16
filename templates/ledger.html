@@ -1,0 +1,289 @@
+{% extends 'base.html' %}
+
+{% block title %}Ledger{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- CSS Styling -->
+    <style>
+        /* General Button Styling */
+        .btn-gradient {
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            justify-content: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+    
+        .btn-gradient:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+    
+        /* Button Variants */
+        .btn-add { background: linear-gradient(135deg, #007BFF, #00C6FF); }
+        .btn-add:hover { background: linear-gradient(135deg, #0056b3, #0084ff); }
+    
+        .btn-import { background: linear-gradient(135deg, #007bff, #0056b3); }
+        .btn-import:hover { background: linear-gradient(135deg, #0056b3, #003d80); }
+    
+        .btn-export-csv { background: linear-gradient(90deg, #28A745, #5DCB6E); }
+        .btn-export-pdf { background: linear-gradient(90deg, #DC3545, #F77073); }
+    
+        /* Add & Import Ledger Section */
+        .ledger-container {
+            display: flex;
+            align-items: center;
+            justify-content:center;
+            gap: 20px;
+            padding: 10px 0;
+            flex-wrap: wrap; /* Ensures responsiveness */
+        }
+    
+        /* Upload Box Styling */
+        .upload-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 320px;
+            height: 80px;
+            border: 2px dashed #007bff;
+            border-radius: 10px;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            color: #555;
+            transition: all 0.3s ease-in-out;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            padding: 12px;
+        }
+    
+        .upload-box:hover {
+            background: #e3eaf2;
+            border-color: #0056b3;
+            transform: scale(1.02);
+        }
+    
+        #file-upload { display: none; }
+    
+        /* Filter & Search Section */
+        .filter-container {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+    
+        .filter-container select,
+        .filter-container input {
+            width: 100%;
+            max-width: 250px;
+            padding: 10px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+    
+        /* Button Alignment */
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-bottom: 20px;
+        }
+    
+        @media (max-width: 768px) {
+            .ledger-container {
+                flex-direction: column;
+                align-items: center;
+                gap: 15px;
+            }
+        }
+    </style>
+    <!-- Add & Import Ledger Section -->
+    <div class="ledger-container">
+        <a href="{{ url_for('add_ledger') }}" class="btn-gradient btn-add">
+            <i class="fas fa-user-plus"></i> Add Ledger
+        </a>
+        <h2>Or</h2>
+        <form action="{{ url_for('import_suppliers') }}" method="POST" enctype="multipart/form-data" class="upload-form">
+            <label for="file-upload" class="upload-box">
+                <i class="fas fa-folder-open" style="font-size: 22px; color: #007BFF;"></i>
+                <span id="file-name">Drag & Drop or Click to Upload</span>
+                <input id="file-upload" type="file" name="file" accept=".csv, .xlsx" required onchange="updateFileName(this)">
+            </label>
+            <button type="submit" class="btn-gradient btn-import" style="margin: 10px; margin-left: 25%;">
+                <i class="fas fa-file-import"></i> Import Ledger
+            </button>
+        </form>
+    </div>
+
+    <!-- Filter & Search Section -->
+    <div class="filter-container">
+        <input type="text" id="searchInput" placeholder="🔍 Search transactions...">
+        <select id="transactionTypeFilter">
+            <option value="">All Transactions</option>
+            <option value="Debit">Debit</option>
+            <option value="Credit">Credit</option>
+        </select>
+        <select id="customerFilter">
+            <option value="">All Customers</option>
+            {% set customers = data | map(attribute=1) | unique %} <!-- Use customer_mobile -->
+            {% for customer in customers %}
+            <option value="{{ customer }}">{{ customer }}</option>
+            {% endfor %}
+        </select>
+        <input type="date" id="dateFilter">
+    </div>
+
+    <!-- Export Buttons -->
+    <div class="button-group">
+        <button class="btn-gradient btn-export-csv" onclick="exportTableToCSV()">
+            <i class="fas fa-file-csv"></i> Export to CSV
+        </button>
+        <button class="btn-gradient btn-export-pdf" onclick="exportTableToPDF()">
+            <i class="fas fa-file-pdf"></i> Export to PDF
+        </button>
+    </div>
+
+    <!-- Ledger Table -->
+    <div class="table-responsive">
+        <table class="table table-striped table-bordered" id="ledgerTable">
+            <thead class="table-dark">
+                <tr>
+                    <th>Customer Mobile</th>
+                    <th>Customer Name</th>
+                    <th>Transaction Date</th>
+                    <th>Amount ($)</th>
+                    <th>Transaction Type</th>
+                    <th>Balance ($)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in data %}
+                <tr>
+                    <td>{{ entry[1] }}</td> <!-- customer_mobile -->
+                    <td>{{ entry[2] }}</td> <!-- customer_name -->
+                    <td>{{ entry[0] }}</td> <!-- transaction_date -->
+                    <td>${{ "%.2f"|format(entry[3]) }}</td> <!-- amount -->
+                    <td>{{ entry[4] }}</td> <!-- transaction_type -->
+                    <td>${{ "%.2f"|format(entry[5]) }}</td> <!-- balance -->
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        function updateFileName(input) {
+            document.getElementById('file-name').textContent = input.files[0] 
+                ? "✅ " + input.files[0].name 
+                : "Drag & Drop or Click to Upload";
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const searchInput = document.getElementById("searchInput");
+            const transactionTypeFilter = document.getElementById("transactionTypeFilter");
+            const customerFilter = document.getElementById("customerFilter");
+            const dateFilter = document.getElementById("dateFilter");
+            const tableRows = document.querySelectorAll("#ledgerTable tbody tr");
+
+            function filterTable() {
+                const searchText = searchInput.value.toLowerCase();
+                const selectedType = transactionTypeFilter.value;
+                const selectedCustomer = customerFilter.value;
+                const selectedDate = dateFilter.value;
+
+                tableRows.forEach(row => {
+                    const cells = row.getElementsByTagName("td");
+                    const customerMobile = cells[0].textContent.trim().toLowerCase(); // customer_mobile
+                    const customerName = cells[1].textContent.trim().toLowerCase();   // customer_name
+                    const date = cells[2].textContent.trim();                         // transaction_date
+                    const amount = cells[3].textContent.trim();                       // amount
+                    const type = cells[4].textContent.trim();                         // transaction_type
+                    const balance = cells[5].textContent.trim();                      // balance
+
+                    // Search includes both customer_mobile and customer_name
+                    let matchesSearch = searchText === "" || 
+                        customerMobile.includes(searchText) || 
+                        customerName.includes(searchText);
+
+                    let matchesType = selectedType === "" || type === selectedType;
+                    let matchesCustomer = selectedCustomer === "" || customerMobile === selectedCustomer;
+                    let matchesDate = selectedDate === "" || date.startsWith(selectedDate);
+
+                    row.style.display = matchesSearch && matchesType && matchesCustomer && matchesDate ? "" : "none";
+                });
+            }
+
+            searchInput.addEventListener("keyup", filterTable);
+            transactionTypeFilter.addEventListener("change", filterTable);
+            customerFilter.addEventListener("change", filterTable);
+            dateFilter.addEventListener("change", filterTable);
+        });
+
+        function exportTableToCSV() {
+            let csv = [];
+            let rows = document.querySelectorAll("#ledgerTable tr");
+
+            rows.forEach(row => {
+                let cols = row.querySelectorAll("th, td");
+                let rowData = Array.from(cols).map(col => `"${col.innerText.trim()}"`);
+                csv.push(rowData.join(","));
+            });
+
+            let csvContent = "data:text/csv;charset=utf-8," + csv.join("\n");
+            let encodedUri = encodeURI(csvContent);
+            let link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "ledger.csv");
+            document.body.appendChild(link);
+            link.click();
+        }
+
+        function exportTableToPDF() {
+            let doc = new jspdf.jsPDF();
+            doc.text("Ledger Report", 14, 10);
+            
+            let headers = [];
+            let rows = [];
+
+            document.querySelectorAll("#ledgerTable thead th").forEach(th => {
+                headers.push(th.innerText);
+            });
+
+            document.querySelectorAll("#ledgerTable tbody tr").forEach(row => {
+                let rowData = [];
+                row.querySelectorAll("td").forEach(td => {
+                    rowData.push(td.innerText);
+                });
+                rows.push(rowData);
+            });
+
+            doc.autoTable({
+                head: [headers],
+                body: rows,
+                startY: 20
+            });
+
+            doc.save("ledger.pdf");
+        }
+    </script>
+
+    <!-- Include jsPDF & AutoTable for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+</div>
+{% endblock %}

@@ -1,0 +1,279 @@
+{% extends 'base.html' %}
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+
+{% block title %}Inventory Management{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- <h2 class="text-center mb-4">Inventory Management</h2> -->
+
+    <!-- Search and Add Product -->
+    <div class="search-container">
+        <input type="text" id="searchInput" class="search-box" placeholder="🔍 Search by product on inventory table ...">
+        <a href="{{ url_for('add_product') }}" class="add-product-btn">
+            <i class="fas fa-plus"></i> Add Product
+        </a>
+    </div>
+    <style>
+        /* Centering & Layout */
+.search-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+    max-width: 600px;
+    margin: 20px auto;
+}
+
+/* Search Input Styling */
+.search-box {
+    flex: 1;
+    padding: 12px 15px;
+    font-size: 16px;
+    border: 2px solid #007BFF;
+    border-radius: 25px;
+    outline: none;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0px 4px 10px rgba(0, 123, 255, 0.2);
+}
+
+.search-box:focus {
+    border-color: #0056b3;
+    box-shadow: 0px 4px 12px rgba(0, 86, 179, 0.3);
+}
+
+/* Add Product Button */
+.add-product-btn {
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    color: white;
+    text-decoration: none;
+    border-radius: 25px;
+    background: linear-gradient(to right, #007BFF, #0056b3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease-in-out;
+    box-shadow: 0px 4px 10px rgba(0, 123, 255, 0.3);
+}
+
+.add-product-btn i {
+    font-size: 18px;
+}
+
+.add-product-btn:hover {
+    background: linear-gradient(to right, #0056b3, #004080);
+    transform: scale(1.05);
+    box-shadow: 0px 6px 12px rgba(0, 86, 179, 0.4);
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+    .search-container {
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+    }
+
+    .search-box, .add-product-btn {
+        width: 100%;
+        text-align: center;
+    }
+}
+
+    </style>
+
+    <div class="table-responsive">
+        <table class="table table-striped table-bordered" id="inventoryTable">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Product Name</th>
+                    <th>Quantity</th>
+                    <th>Unit</th>
+                    <th>Category</th>
+                    <th>HS Code</th>
+                    <th>Expiry Date</th>
+                    <!-- <th>Availability</th> -->
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in data %}
+                <tr>
+                    <td>{{ item[0] }}</td>  <!-- pro_id -->
+                    <td>{{ item[1] }}</td>  <!-- pro_name -->
+                    <td>{{ item[2] }}</td>  <!-- quantity -->
+                    <td>{{ item[3] }}</td>  <!-- unit -->
+                    <td>{{ item[4] }}</td>  <!-- category -->
+                    <td>{{ item[5] }}</td>  <!-- hscode -->
+                    <td>{{ item[6] }}</td>  <!-- expiry_date -->
+                    <!-- <td>
+                        {% if item|length > 7 and item[7] is not none %}
+                            {% if item[7] >= 3 %}
+                                <span class="badge bg-success">In Stock</span>
+                            {% elif item[7] >= 1 %}
+                                <span class="badge bg-warning">Low Stock</span>
+                            {% else %}
+                                <span class="badge bg-danger">Out of Stock</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge bg-secondary">Unknown</span>
+                        {% endif %}
+                    </td> -->
+                    <td>
+                        <a href="{{ url_for('add_item', product_id=item[0]) }}" class="icon-link">
+                            <i class="fas fa-plus"></i>
+                        </a>
+                        <style>
+                            .icon-link {
+                                background-color: transparent; /* No background */
+                                border: none; /* Remove border */
+                                padding: 0; /* No padding */
+                                color: red; /* Inherit the color of the parent element */
+                                text-decoration: none; /* Remove underline from link */
+                                display: inline-block; /* Ensure the link behaves properly */
+                            }
+
+                            .icon-link i {
+                                font-size: 1.5em; /* Adjust the size of the icon if needed */
+                            }
+
+                        </style>                        
+                    </td>
+                    
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <!-- Add Font Awesome for icons -->
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+        
+    </div>
+
+    <!-- Pagination -->
+<div class="d-flex justify-content-center pagination-container">
+    <button id="prevPage" class="btn btn-secondary me-2">Previous</button>
+    <span id="pageNumber" class="align-self-center">Page 1</span>
+    <button id="nextPage" class="btn btn-secondary ms-2">Next</button>
+</div>
+<style>
+    .pagination-container {
+    margin-top: 20px; /* Adjust the value as needed */
+}
+
+</style>
+</div>
+
+<!-- <script>
+    // Live Search
+    document.getElementById('searchInput').addEventListener('input', function () {
+        let searchValue = this.value.toLowerCase();
+        let rows = document.querySelectorAll("#inventoryTable tbody tr");
+
+        rows.forEach(row => {
+            let productName = row.cells[1].textContent.toLowerCase();
+            row.style.display = productName.includes(searchValue) ? "" : "none";
+        });
+    });
+
+    // Pagination
+    let table = document.getElementById("inventoryTable");
+    let rows = table.querySelectorAll("tbody tr");
+    let rowsPerPage = 5;
+    let currentPage = 1;
+
+    function showPage(page) {
+        let start = (page - 1) * rowsPerPage;
+        let end = start + rowsPerPage;
+
+        rows.forEach((row, index) => {
+            row.style.display = (index >= start && index < end) ? "" : "none";
+        });
+
+        document.getElementById("pageNumber").textContent = "Page " + page;
+    }
+
+    document.getElementById("prevPage").addEventListener("click", function () {
+        if (currentPage > 1) {
+            currentPage--;
+            showPage(currentPage);
+        }
+    });
+
+    document.getElementById("nextPage").addEventListener("click", function () {
+        if (currentPage < Math.ceil(rows.length / rowsPerPage)) {
+            currentPage++;
+            showPage(currentPage);
+        }
+    });
+
+    showPage(currentPage);
+</script> -->
+<script>
+    // Live Search with Availability
+    document.getElementById('searchInput').addEventListener('input', function () {
+        let searchValue = this.value.toLowerCase().trim();
+        let rows = document.querySelectorAll("#inventoryTable tbody tr");
+        let filteredRows = [];
+
+        rows.forEach(row => {
+            let productName = row.cells[1].textContent.toLowerCase();  // Product Name (index 1)
+            let availability = row.cells[7].textContent.toLowerCase(); // Availability (index 7)
+
+            // Show row if search matches product name or availability status
+            let matches = productName.includes(searchValue) || availability.includes(searchValue);
+            row.style.display = matches ? "" : "none";
+            
+            // Collect filtered rows for pagination
+            if (matches) {
+                filteredRows.push(row);
+            }
+        });
+
+        // Update pagination with filtered rows
+        updatePagination(filteredRows);
+    });
+
+    // Pagination
+    let table = document.getElementById("inventoryTable");
+    let rows = table.querySelectorAll("tbody tr");
+    let rowsPerPage = 5;
+    let currentPage = 1;
+
+    function showPage(page) {
+        let start = (page - 1) * rowsPerPage;
+        let end = start + rowsPerPage;
+
+        rows.forEach((row, index) => {
+            row.style.display = (index >= start && index < end) ? "" : "none";
+        });
+
+        document.getElementById("pageNumber").textContent = "Page " + page;
+    }
+
+    document.getElementById("prevPage").addEventListener("click", function () {
+        if (currentPage > 1) {
+            currentPage--;
+            showPage(currentPage);
+        }
+    });
+
+    document.getElementById("nextPage").addEventListener("click", function () {
+        if (currentPage < Math.ceil(rows.length / rowsPerPage)) {
+            currentPage++;
+            showPage(currentPage);
+        }
+    });
+
+    showPage(currentPage);
+
+ 
+</script>
+
+{% endblock %}
+
+

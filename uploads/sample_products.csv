@@ -1,0 +1,8 @@
+pro_id,pro_name,cost_price,selling_price,net_profit,profit_percentage,quantity,unit,category,safety_level,expiry_date,supplier_id,terms_from_invoice,hc_code
+1,Apple,50.0,70.0,20.0,40.0,100,kg,Fruits,1,2025-12-31,1,Net 30 payment terms,HC123
+2,Milk,30.0,45.0,15.0,50.0,50,liters,Dairy,3,2024-10-15,2,Cash on delivery,HC456
+3,Eggs,5.0,8.0,3.0,60.0,200,pieces,Poultry,5,2024-08-20,3,Credit limit: $5000,HC789
+4,Rice,40.0,55.0,15.0,37.5,500,kg,Grains,1,2025-01-01,1,Net 30 payment terms,HC321
+5,Sugar,35.0,50.0,15.0,42.86,300,kg,Grocery,3,2025-03-01,3,Credit limit: $5000,HC654
+6,Salt,10.0,15.0,5.0,50.0,400,kg,Grocery,5,2025-02-01,2,Cash on delivery,HC987
+7,Flour,25.0,35.0,10.0,40.0,250,kg,Bakery,3,2025-03-01,3,Credit limit: $5000,HC258

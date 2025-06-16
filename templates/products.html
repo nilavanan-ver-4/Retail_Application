@@ -1,0 +1,295 @@
+{% extends 'base.html' %}
+
+{% block title %}Manage Products{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+   <!--  <h2 class="text-center mb-4">Product Inventory</h2> -->
+
+    <!-- Search and Add Product -->
+   <!-- Search Input & Add Product Button -->
+
+<!-- Search Input & Add Product Button -->
+<!-- Search Input & Add Product Button -->
+
+
+<!-- Import Products Form -->
+<form action="{{ url_for('import_products') }}" method="POST" enctype="multipart/form-data" class="upload-form">
+
+    <!-- File Upload Box -->
+    <label for="file-upload" class="upload-box">
+        <i class="fas fa-cloud-upload-alt"></i>
+        <span id="file-name">Drag & Drop or Click to Upload</span>
+        <input id="file-upload" type="file" name="file" accept=".csv, .xlsx" required onchange="updateFileName(this)">
+    </label>
+
+    <!-- Import Button -->
+    <button type="submit" class="import-button">
+        <i class="fas fa-file-import"></i> Import Products
+    </button>
+
+</form>
+<div class="search-container">
+    <input type="text" id="searchInput" class="search-box" placeholder="🔍 Search by product name...">
+    <a href="{{ url_for('add_product') }}" class="add-product-btn">
+        <i class="fas fa-plus"></i> Add Product
+    </a>
+</div>
+
+<!-- JavaScript to Display Selected File Name -->
+<script>
+    function updateFileName(input) {
+        const fileName = input.files.length > 0 ? input.files[0].name : "Drag & Drop or Click to Upload";
+        document.getElementById("file-name").textContent = fileName;
+    }
+</script>
+
+<!-- CSS Styling -->
+<style>
+    /* Centering & Alignment */
+    .search-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 15px;
+        width: 100%;
+        max-width: 600px;
+        margin: 20px auto;
+    }
+
+    .upload-form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 600px;
+        margin: auto;
+    }
+
+    /* Search Box Styling */
+    .search-box {
+        flex: 1;
+        padding: 12px 15px;
+        font-size: 16px;
+        border: 2px solid #007BFF;
+        border-radius: 25px;
+        outline: none;
+        transition: all 0.3s ease-in-out;
+        box-shadow: 0px 4px 10px rgba(0, 123, 255, 0.2);
+    }
+
+    .search-box:focus {
+        border-color: #0056b3;
+        box-shadow: 0px 4px 12px rgba(0, 86, 179, 0.3);
+    }
+
+    /* Add Product Button */
+    .add-product-btn {
+        padding: 12px 20px;
+        font-size: 16px;
+        font-weight: bold;
+        color: white;
+        text-decoration: none;
+        border-radius: 25px;
+        background: linear-gradient(to right, #007BFF, #0056b3);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s ease-in-out;
+        box-shadow: 0px 4px 10px rgba(0, 123, 255, 0.3);
+    }
+
+    .add-product-btn i {
+        font-size: 18px;
+    }
+
+    .add-product-btn:hover {
+        background: linear-gradient(to right, #0056b3, #004080);
+        transform: scale(1.05);
+        box-shadow: 0px 6px 12px rgba(0, 86, 179, 0.4);
+    }
+
+    /* Upload Box Styling */
+    .upload-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 350px;
+        height: 50px;
+        border: 2px dashed #007BFF;
+        border-radius: 12px;
+        text-align: center;
+        cursor: pointer;
+        padding: 15px;
+        font-size: 16px;
+        font-weight: bold;
+        color: #007BFF;
+        transition: all 0.3s ease-in-out;
+        background: linear-gradient(to bottom, rgba(0, 123, 255, 0.1), rgba(0, 123, 255, 0.05));
+    }
+
+    .upload-box i {
+        font-size: 24px;
+        margin-bottom: 8px;
+        color: #0056b3;
+    }
+
+    .upload-box:hover {
+        background: linear-gradient(to bottom, rgba(0, 123, 255, 0.2), rgba(0, 123, 255, 0.1));
+        transform: scale(1.05);
+        border-color: #0056b3;
+    }
+
+    /* Hidden File Input */
+    .upload-box input[type="file"] {
+        display: none;
+    }
+
+    /* Import Button Styling */
+    .import-button {
+        margin-top: 15px;
+        padding: 12px 25px;
+        background: linear-gradient(to right, #007BFF, #0056b3);
+        color: white;
+        font-size: 16px;
+        font-weight: bold;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s ease-in-out;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .import-button:hover {
+        background: linear-gradient(to right, #0056b3, #004080);
+        transform: scale(1.05);
+    }
+
+    /* Responsive Design */
+    @media (max-width: 600px) {
+        .search-container {
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .search-box, .add-product-btn {
+            width: 100%;
+            text-align: center;
+        }
+
+        .upload-box {
+            width: 90%;
+        }
+    }
+</style>
+
+
+
+    <div class="table-responsive">
+        <table class="table table-bordered" id="productTable">
+            <thead class="table-dark">
+                <tr>
+                    <th>Product ID</th>
+                    <th>Product Name</th>
+                    <th>Cost Price</th>
+                    <th>Selling Price</th>
+                    <!-- <th>Net Profit</th>
+                    <th>Profit Percentage</th> -->
+                    <th>Quantity</th>
+                    <th>Unit</th>
+                    <th>Category</th>
+                    <th>Safety Level</th>
+                    <th>Expiry Date</th>
+                    <th>Supplier ID</th>
+                    <th>Supplier Name</th>
+                    <!-- <th>Terms from Invoice</th>
+                    <th>HC Code</th> -->
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in data %}
+                <tr>
+                    <td>{{ product[0] }}</td>  <!-- Product ID (pro_id) -->
+                    <td>{{ product[1] }}</td>  <!-- Product Name (pro_name) -->
+                    <td>{{ product[2] }}</td>  <!-- Cost Price (cost_price) -->
+                    <td>{{ product[3] }}</td>  <!-- Selling Price (selling_price) -->
+                    <!-- <td>{{ product[4] }}</td>  --> <!-- Net Profit (net_profit) -->
+                   <!--  <td>{{ product[5] }}</td>  --> <!-- Profit Percentage (profit_percentage) -->
+                    <td>{{ product[6] }}</td>  <!-- Quantity (quantity) -->
+                    <td>{{ product[7] }}</td>  <!-- Unit (unit) -->
+                    <td>{{ product[8] }}</td>  <!-- Category (category) -->
+                    <td>{{ product[9] }}</td>  <!-- Safety Level (safety_level) -->
+                    <td>{{ product[10] }}</td> <!-- Expiry Date (expiry_date) -->
+                    <td>{{ product[11] }}</td> <!-- Supplier ID (supplier_id) -->
+                    <td>{{ product[12] }}</td> <!-- Supplier Name (supplier_name) -->
+                    <!-- <td>{{ product[13] }}</td> --> <!-- Terms from Invoice (terms_from_invoice) -->
+                    <!-- <td>{{ product[14] }}</td> --> <!-- HC Code (hc_code) -->
+                    
+                    <td>
+                        <style>
+                            .icon-link {
+                                color: #1da1f2; /* You can change this color to whatever you like */
+                                text-decoration: none;
+                                font-size: larger;
+                               /* Added padding for better spacing */
+                                border-radius: 4px; /* Optional rounded corners */
+                                display: inline-block;
+                                margin: 5px;
+                            }
+                        
+                            .icon-link:hover {
+                                color: #0d8cec; /* Change color on hover if you like */
+                            }
+                        
+                            .edit-icon i, .delete-icon i {
+                                margin-right: 5px;
+                            }
+                        </style>
+                        
+                        <!-- Update Product Link -->
+                        <a href="{{ url_for('update_product', product_id=product[0]) }}" class="icon-link">
+                            <i class="fas fa-edit"></i> 
+                        </a>
+                        
+                        <form action="{{ url_for('delete_product', product_id=product[0]) }}" method="post" onsubmit="return confirm('Are you sure?');">
+                            <button type="submit" class="icon-link">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                        
+                        
+                        
+                    </td>
+                    
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="15">No products found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            
+        </table>
+    </div>
+</div>
+
+<script>
+    // Live Search
+    document.getElementById('searchInput').addEventListener('input', function () {
+        let searchValue = this.value.toLowerCase();
+        let rows = document.querySelectorAll("#productTable tbody tr");
+
+        rows.forEach(row => {
+            let productName = row.cells[1].textContent.toLowerCase();  // Now searching by Product Name
+            row.style.display = productName.includes(searchValue) ? "" : "none";
+        });
+    });
+</script>
+
+
+{% endblock %}

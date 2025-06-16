@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+{% block title %}Invoices{% endblock %}
+{% block content %}
+<h1>Invoices</h1>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+<div class="header-actions">
+    <style>
+        .btn {
+            padding: 8px 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            display: inline-block;
+            color: white;
+            font-size: larger;
+            margin: 5px;
+        }
+    
+        .blue-gradient {
+            background: linear-gradient(to right, #007BFF, #00C6FF);
+        }
+    
+        .gray {
+            background-color: gray;
+        }
+    
+        .btn i {
+            margin-right: 5px;
+        }
+    </style>
+    
+    <!-- Create Invoice Button -->
+    <a href="{{ url_for('create_invoice') }}" class="btn blue-gradient">
+        <i class="fas fa-file-invoice"></i> Create Invoice
+    </a>
+    
+    <!-- Add Product Button -->
+    <a href="{{ url_for('add_product') }}" class="btn blue-gradient">
+        <i class="fas fa-plus"></i> Add Product
+    </a>
+    
+    <!-- Ledger Button -->
+    <a href="{{ url_for('ledger') }}" class="btn gray">
+        <i class="fas fa-book"></i> Ledger
+    </a>
+    
+    <!-- <a href="{{ url_for('filters_page') }}" class="btn filter">&#9776; Filters</a> -->
+    <!-- <a href="{{ url_for('order_history') }}" class="btn gray">Order History</a> -->
+    <!-- <a href="{{ url_for('ledger') }}" class="btn gray">Ledger</a> -->
+     
+</div>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Invoice No</th>
+                <th>Customer Name</th>
+                <th>Mobile</th>
+                <th>Inv. Date</th>
+                <th>Terms</th>
+                <th>Sales by</th>
+                <th>Total Amount</th>
+                <th>Discount %</th>
+                <th>Final Amount</th>
+                <th>Status</th>
+                <th>Payment Status</th>
+                <th>Print</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in invoices_data %}
+            <tr>
+                <td>{{ item.invoice_no }}</td>
+                <td>{{ item.customer_name }}</td>
+                <td>{{ item.customer_mobile }}</td>
+                <td>{{ item.date }}</td>
+                <td>{{ item.terms }}</td>
+                <td>{{ item.sale_by }}</td>
+                <td>{{ item.total_amount }}</td>
+                <td>{{ item.discount }}</td>
+                <td>{{ item.final_amount }}</td>
+                <td>{{ item.status }}</td>
+                <td style="color: {% if item.payment_status == 'Paid' %} green {% else %} red {% endif %};">
+                    {{ item.payment_status }}
+                </td>
+                <td>
+                    <button onclick="printInvoice('{{ item.invoice_no }}')">Print</button>
+                </td>
+                <td>
+                    <style>
+                        .icon-link {
+                            color: #1da1f2; /* You can change this color to whatever you like */
+                            text-decoration: none;
+                            font-size: larger;
+                            /* padding: 8px 12px; */ /* Added padding for better spacing */
+                            border-radius: 4px; /* Optional rounded corners */
+                            display: inline-block;
+                            margin: 5px;
+                        }
+                    
+                        .icon-link:hover {
+                            color: #0d8cec; /* Change color on hover if you like */
+                        }
+                    
+                        .icon-link i {
+                            margin-right: 5px;
+                        }
+                    </style>
+                    
+                    <!-- Delete Button -->
+                    <a href="#" class="icon-link" onclick="return confirm('Are you sure?');">
+                        <i class="fas fa-trash"></i>
+                    </a>
+                    
+                    <!-- WhatsApp Link -->
+                    <a href="https://wa.me/{{ item.customer_mobile }}" class="icon-link">
+                        <i class="fab fa-whatsapp"></i> 
+                    </a>
+                    
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+   function printInvoice(invoiceNo) {
+    if (!invoiceNo || typeof invoiceNo === "undefined") {
+        alert("Invalid invoice number!");
+        return;
+    }
+
+    fetch(`/get_invoice_details?invoice_no=${invoiceNo}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert("Invoice not found!");
+                return;
+            }
+
+            let invoiceDetails = data;
+            let products = data.items;
+
+            // ✅ Combine duplicate products
+            let combinedProducts = {};
+            products.forEach(item => {
+                let key = `${item.name.toLowerCase()}-${item.price}`;
+                if (!combinedProducts[key]) {
+                    combinedProducts[key] = { 
+                        name: item.name,
+                        quantity: item.quantity,
+                        unit: item.unit,
+                        price: item.price,
+                        discount: item.discount,
+                        total: item.total
+                    };
+                } else {
+                    combinedProducts[key].quantity += item.quantity;
+                    combinedProducts[key].total += item.total;
+                }
+            });
+
+            // ✅ Generate table rows dynamically
+            let productRows = Object.values(combinedProducts).map(item => `
+                <tr>
+                    <td>${item.name}</td>
+                    <td>${item.quantity} ${item.unit}</td>
+                    <td>RM ${(item.price || 0).toFixed(2)}</td>
+                    <td>RM ${(item.discount || 0).toFixed(2)}</td>
+                    <td>RM ${(item.total || 0).toFixed(2)}</td>
+                </tr>
+            `).join('');
+
+            let invoiceHTML = `
+                <html>
+                <head>
+                    <title>Invoice #${invoiceDetails.invoice_no}</title>
+                    <style>
+                        body {
+                            font-family: 'Arial', sans-serif;
+                            padding: 20px;
+                            background: #ffffff;
+                            color: #333;
+                        }
+                        .invoice-container {
+                            width: 90%;
+                            max-width: 800px;
+                            margin: auto;
+                            background: #fff;
+                            padding: 20px;
+                            border-radius: 10px;
+                            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                        }
+                        .header {
+                            text-align: center;
+                            padding-bottom: 20px;
+                            border-bottom: 2px solid #000;
+                        }
+                        .logo img {
+                            max-width: 100px;
+                            margin-bottom: 10px;
+                        }
+                        .details {
+                            text-align: center;
+                            font-size: 14px;
+                            color: #555;
+                        }
+                        .invoice-details {
+                            margin-top: 20px;
+                            padding: 15px;
+                            background: #f2f2f2;
+                            border-radius: 8px;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 20px;
+                        }
+                        th, td {
+                            padding: 10px;
+                            border: 1px solid #ccc;
+                            text-align: left;
+                        }
+                        th {
+                            background: #007bff;
+                            color: #fff;
+                        }
+                        .total-row {
+                            font-weight: bold;
+                            background: #e9ecef;
+                        }
+                        .notes {
+                            margin-top: 20px;
+                            font-size: 12px;
+                            color: #666;
+                        }
+                        .signature {
+                            margin-top: 30px;
+                            display: flex;
+                            justify-content: space-between;
+                        }
+                        .signature div {
+                            width: 45%;
+                            text-align: center;
+                            border-top: 1px solid black;
+                            padding-top: 5px;
+                            font-size: 14px;
+                        }
+                        .center {
+                            text-align: center;
+                            margin-top: 20px;
+                        }
+                        .print-button {
+                            background: #28a745;
+                            color: #fff;
+                            padding: 10px 20px;
+                            border: none;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            font-size: 16px;
+                        }
+                        .print-button:hover {
+                            background: #218838;
+                        }
+                        @media print {
+                            @page {
+                                margin: 0; /* Removes page margins */
+                            }
+                            body {
+                                margin: 0;
+                                padding: 10px; /* Adjust padding if needed */
+                                margin:20px;
+                            }
+                            header, footer {
+                                display: none; /* Hides browser-added headers/footers */
+                            }
+                        }
+
+                    </style>
+                </head>
+                <body>
+                    <div class="invoice-container">
+                        <div class="header">
+                            <div class="logo">
+                                <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="Company Logo">
+                                
+                            </div>
+                            <h2>ASKER ENTERPRISE</h2>
+                            <p class="details">
+                                NO: 2404 4TH FLOOR MALAYAN MANSION, <br> MASJID INDIA, KUALA LUMPUR – 50100 <br>
+                                Contact: 0182843318 | Email: ajmeerdon@gmail.com
+                            </p>
+                        </div>
+
+                        <div class="invoice-details">
+                            <h3>Invoice No: ${invoiceDetails.invoice_no}</h3>
+                            <p><strong>Customer:</strong> ${invoiceDetails.customer_name} (${invoiceDetails.customer_mobile})</p>
+                            <p><strong>Date:</strong> ${invoiceDetails.date}</p>
+                        </div>
+
+                        <table>
+                            <tr>
+                                <th>Product</th>
+                                <th>Quantity</th>
+                                <th>Price</th>
+                                <th>Discount</th>
+                                <th>Total</th>
+                            </tr>
+                            ${productRows}
+                            <tr class="total-row">
+                                <td colspan="4"><strong>Final Amount:</strong></td>
+                                <td><strong>RM ${(invoiceDetails.final_amount || 0).toFixed(2)}</strong></td>
+                            </tr>
+                        </table>
+
+                        <p><strong>Status:</strong> ${invoiceDetails.status}</p>
+                        <p><strong>Payment Status:</strong> ${invoiceDetails.payment_status}</p>
+
+                        <div class="center">
+                            <button class="print-button" onclick="window.print()">Print Invoice</button>
+                        </div>
+
+                        <div class="notes">
+                            <h4>Terms & Conditions:</h4>
+                            <ol>
+                                <li>Interest of 1.5% will be imposed after 30 days of delivery.</li>
+                                <li>All cheques should be crossed and made payable to ASKER ENTERPRISE.</li>
+                                <li>All cash payments must be made directly to the Account Department.</li>
+                                <li>Goods remain the property of the seller until full payment is received.</li>
+                                <li>Any discrepancies must be reported within 1 day of the invoice date.</li>
+                            </ol>
+                        </div>
+
+                        <div class="signature">
+                            <div>Authorized Signature</div>
+                            <div>Received Goods in Good Condition</div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+
+            let printWindow = window.open('', '_blank');
+            printWindow.document.write(invoiceHTML);
+            printWindow.document.close();
+            printWindow.focus();
+        })
+        .catch(error => {
+            console.error('Error fetching invoice:', error);
+            alert('Error fetching invoice details.');
+        });
+}
+
+
+
+</script>
+
+
+
+
+{% endblock %}
+
+{% block styles %}
+<style>
+    .header-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .table-container {
+        width: 100%;
+        overflow-x: auto;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th, td {
+        padding: 12px;
+        border-bottom: 1px solid #ddd;
+        text-align: left;
+    }
+    th {
+        background-color: #007bff;
+        color: white;
+    }
+    .btn {
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        border: none;
+    }
+    .btn.blue {
+        background-color: #007bff;
+        color: white;
+    }
+    .btn.blue:hover {
+        background-color: #0056b3;
+    }
+    .btn.gray {
+        background-color: #f1f1f1;
+        color: #333;
+    }
+    .btn.gray:hover {
+        background-color: #ddd;
+    }
+    .btn.print {
+        background-color: #8c8c8c;
+        color: white;
+    }
+    .btn.delete {
+        background: none;
+        color: red;
+        font-size: 16px;
+    }
+    .btn.whatsapp {
+        text-decoration: none;
+        font-size: 16px;
+    }
+    .whatsapp {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 15px 15px;
+        background-color: #25D366;
+        color: white;
+        border-radius: 50%;
+        font-size: 20px;
+        text-decoration: none;
+    }
+    .whatsapp:hover {
+        background-color: #128C7E;
+        color: white;
+    }
+</style>
+{% endblock %}

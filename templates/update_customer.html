@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Update Customer{% endblock %}
+{% block content %}
+<h1>Update Customer</h1>
+
+<!-- Display any flash messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <ul>
+            {% for category, message in messages %}
+                <li class="flash-{{ category }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+{% endwith %}
+
+<form action="{{ url_for('update_customer_post', customer_id=customer[0]) }}" method="POST">
+    <!-- Name Field -->
+    <label for="name">Name:</label>
+    <input type="text" id="name" name="name" value="{{ customer[2] }}" required><br><br>
+
+    <!-- Mobile Field -->
+    <label for="mobile">Mobile:</label>
+    <input type="text" id="mobile" name="mobile" value="{{ customer[1] }}" required><br><br>
+
+    <!-- Address Field -->
+    <label for="address">Address:</label>
+    <textarea id="address" name="address">{{ customer[3] }}</textarea><br><br>
+
+    <!-- Mail Field -->
+    <label for="mail">Mail:</label>
+    <input type="email" id="mail" name="mail" value="{{ customer[4] }}"><br><br>
+
+    <button type="submit">Update Customer</button>
+</form>
+
+{% endblock %}

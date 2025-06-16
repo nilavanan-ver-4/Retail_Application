@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Invoice</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            background-color: #f4f6f9;
+            font-family: 'Arial', sans-serif;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            color: #007bff;
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+        .form-group label {
+            font-weight: 500;
+        }
+        .form-row {
+            margin-bottom: 20px;
+        }
+        .product-item {
+            position: relative;
+        }
+      
+        .suggestions-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    margin: 4px 0 0 0;
+    padding: 0;
+    list-style: none; /* Removes bullet points from <ul> */
+    display: none; /* Hidden by default */
+}
+
+.suggestions-list li {
+    padding: 10px 12px;
+    cursor: pointer;
+    font-family: 'Segoe UI', 'Arial', sans-serif;
+    font-size: 14px;
+    color: #333333;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    list-style: none; /* Ensures no bullet points on <li> */
+    text-decoration: none;
+}
+
+.suggestions-list li:last-child {
+    border-bottom: none; /* No border on the last item */
+}
+
+.suggestions-list li:hover {
+    background-color: #007bff;
+    color: #ffffff;
+}
+
+/* Scrollbar styling */
+.suggestions-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.suggestions-list::-webkit-scrollbar-track {
+    background: #f5f5f5;
+    border-radius: 6px;
+}
+
+.suggestions-list::-webkit-scrollbar-thumb {
+    background: #bdbdbd;
+    border-radius: 6px;
+}
+
+.suggestions-list::-webkit-scrollbar-thumb:hover {
+    background: #a0a0a0;
+}
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        .alert-warning {
+            margin-top: 20px;
+            font-size: 14px;
+            background-color: #f0ad4e;
+            color: white;
+        }
+        .alert-warning strong {
+            font-weight: 600;
+        }
+    </style>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+
+        // Function to add a new product row
+        function addProduct() {
+            const productContainer = document.getElementById('product-container');
+            const newProductRow = document.createElement('div');
+            newProductRow.classList.add('form-row', 'mb-3', 'product-item');
+            newProductRow.innerHTML = `
+                <div class="col">
+                    <label for="product_id[]">Product ID</label>
+                    <input type="text" name="product_id[]" class="form-control product_id" placeholder="Enter Product ID" onblur="fetchProductDetails(this)">
+                </div>
+                <div class="col">
+                    <label for="product_name[]">Product Name</label>
+                    <input type="text" name="product_name[]" class="form-control product_name" placeholder="Product Name" oninput="suggestProductNames(this)">
+                    <ul class="suggestions-list" style="display: none;"></ul>
+                </div>
+                <div class="col">
+                    <label for="quantity[]">Quantity</label>
+                    <input type="number" name="quantity[]" class="form-control quantity" required oninput="calculateTotal()">
+                </div>
+                <div class="col">
+                    <label for="price[]">Price</label>
+                    <input type="number" name="price[]" class="form-control price" required oninput="calculateTotal()">
+                </div>
+                <div class="col">
+                    <label for="discount[]">Discount</label>
+                    <input type="number" name="discount[]" class="form-control discount" value="0" oninput="calculateTotal()">
+                </div>
+                <div class="col">
+                    <label for="amount[]">Amount</label>
+                    <input type="number" name="amount[]" class="form-control amount" readonly>
+                </div>
+                <div class="col d-flex align-items-end">
+                    <i class="fas fa-trash-alt text-danger" style="cursor: pointer;" onclick="removeProduct(this)"></i>
+                </div>
+            `;
+            productContainer.appendChild(newProductRow);
+        }
+
+        // Function to handle custom product selection
+        function handleCustomProduct(selectElement) {
+            let row = selectElement.closest(".product-item");
+            let isCustom = selectElement.value.toLowerCase() === "others";
+            
+            // Show/hide custom product fields
+            row.querySelectorAll('.custom-fields').forEach(field => {
+                field.classList.toggle('d-none', !isCustom);
+            });
+
+            // Clear product name if it's a custom product
+            if (isCustom) {
+                row.querySelector(".product_name").value = "";
+            }
+        }
+
+        // Function to remove a product row
+        function removeProduct(button) {
+            button.closest('.product-item').remove();
+            calculateTotal();
+        }
+
+        // Function to calculate the total amount
+// Example for calculating total amount from product details (make sure this is triggered)
+function calculateTotal() {
+    let total = 0;
+    document.querySelectorAll('.product-item').forEach(row => {
+        const quantity = parseFloat(row.querySelector('.quantity').value) || 1;
+        const price = parseFloat(row.querySelector('.price').value) || 0;
+        const discount = parseFloat(row.querySelector('.discount').value) || 0;
+        const amount = (quantity * price) - discount;
+        row.querySelector('.amount').value = amount.toFixed(2);
+        total += amount;
+    });
+    document.getElementById('total_amount').value = total.toFixed(2); // Ensure this is updated
+}
+calculateTotal();
+
+
+        // Fetch customer details based on mobile number
+        document.getElementById("customer_mobile").addEventListener("blur", function() {
+            let mobile = this.value.trim();
+            if (mobile) {
+                fetch(`/get_customer_details/${mobile}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        document.getElementById("customer_name").value = data.exists ? data.name : "";
+                        document.getElementById("customer_address").value = data.exists ? data.address || "" : "";
+                        document.getElementById("customer_mail").value = data.exists ? data.mail || "" : "";
+                    })
+                    .catch(error => console.error("Error fetching customer details:", error));
+            }
+        });
+
+        // Function to fetch product details by ID or Name
+        function fetchProductDetails(inputElement, searchBy = "id") {
+            let queryValue = inputElement.value.trim(); // Trim whitespace
+            let row = inputElement.closest(".product-item");
+
+            console.log("Fetching details for:", queryValue, "Search By:", searchBy);
+
+            if (!queryValue) {
+                console.warn("Query value is empty!");
+                return;
+            }
+
+            fetch(`/get_product_details?${searchBy}=${encodeURIComponent(queryValue)}`)
+                .then(response => {
+                    console.log("Response status:", response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log("Fetched Data:", data);
+                    if (data && Object.keys(data).length > 0) {
+                        row.querySelector(".product_id").value = data.product_id || "";
+                        row.querySelector(".product_name").value = data.product_name || "";
+                        row.querySelector(".price").value = data.price || "";
+                    } else {
+                        console.warn("No matching product found!");
+                        row.querySelector(".product_id").value = "";
+                        row.querySelector(".product_name").value = "";
+                        row.querySelector(".price").value = "";
+                    }
+                })
+                .catch(error => console.error("Error fetching product details:", error));
+        }
+
+        // Function to suggest product names as the user types
+        function suggestProductNames(inputElement) {
+            let query = inputElement.value.trim();
+            let suggestionBox = inputElement.nextElementSibling;
+            if (query.length < 2) {
+                suggestionBox.style.display = "none";
+                return;
+            }
+
+            fetch(`/get_product_suggestions/${query}`)
+                .then(response => response.json())
+                .then(data => {
+                    suggestionBox.innerHTML = "";
+                    data.products.forEach(item => {
+                        let suggestion = document.createElement("div");
+                        suggestion.style.listStyle = "none";
+                    suggestion.style.listStyleType = "none";
+                        suggestion.classList.add("suggestion-item");
+                        suggestion.textContent = item.product_name;
+                        suggestion.addEventListener("click", function () {
+                            inputElement.value = item.product_name;
+                            fetchProductDetails(inputElement);
+                            suggestionBox.style.display = "none";
+                        });
+                        suggestionBox.appendChild(suggestion);
+                    });
+                    suggestionBox.style.display = "block";
+                })
+                .catch(error => console.error("Error fetching product suggestions:", error));
+        }
+
+        // Validate form before submission
+        function validateForm() {
+            let customerMobile = document.getElementById('customer_mobile').value.trim();
+            let customerName = document.getElementById('customer_name').value.trim();
+            
+            if (!customerMobile || !customerName) {
+                alert('Please fill in customer details.');
+                return false;
+            }
+
+            let products = document.querySelectorAll('.product-item');
+            if (products.length === 0) {
+                alert('Please add at least one product.');
+                return false;
+            }
+
+            let isValid = true;
+            products.forEach(row => {
+                let productId = row.querySelector('.product_id').value;
+                if (productId.toLowerCase() === "others") {
+                    let customName = row.querySelector('.product_name').value.trim();
+                    let customPrice = row.querySelector('.price').value.trim();
+                    let customQuantity = row.querySelector('.quantity').value.trim();
+                    let customUnit = row.querySelector('.custom_product_unit').value.trim();
+                    let customCategory = row.querySelector('.custom_product_category').value.trim();
+
+                    if (!customName || !customPrice || !customQuantity || !customUnit || !customCategory) {
+                        alert('Please fill in all details for custom products.');
+                        isValid = false;
+                    }
+                }
+            });
+
+            return isValid;
+        }
+
+        // Expose functions globally
+        window.addProduct = addProduct;
+        window.removeProduct = removeProduct;
+        window.validateForm = validateForm;
+        window.calculateTotal = calculateTotal;
+        window.fetchProductDetails = fetchProductDetails;
+        window.suggestProductNames = suggestProductNames;
+    });
+</script>
+
+    
+    
+</head>
+<body>
+    <div class="container mt-5">
+        <h2>Create Invoice</h2>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="alert alert-dismissible fade show" role="alert">
+                    <ul class="mb-0">
+                        {% for category, message in messages %}
+                            <li class="{{ category }}">{{ message }}</li>
+                        {% endfor %}
+                    </ul>
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('create_invoice') }}" method="POST" onsubmit="return validateForm()">
+            <!-- Invoice Details -->
+            <div class="form-group">
+                <label for="date">Date</label>
+                <input type="date" id="date" name="date" class="form-control" required>
+            </div>
+        
+            <script>
+                document.addEventListener("DOMContentLoaded", function() {
+                    const dateInput = document.getElementById('date');
+                    const today = new Date().toISOString().split('T')[0]; 
+                    dateInput.value = today;
+                });
+            </script>
+        
+            <div class="form-group">
+                <label for="terms">Terms</label>
+                <select id="terms" name="terms" class="form-control" required>
+                    <option value="5">5 days</option>
+                    <option value="10">10 days</option>
+                    <option value="15">15 days</option>
+                    <option value="20">20 days</option>
+                    <option value="30">30 days</option>
+                </select>
+            </div>
+        
+            <div class="form-group">
+                <label for="sales_by">Sales By</label>
+                <input type="text" id="sales_by" name="sale_by" class="form-control" required>
+            </div>
+        
+            <!-- Customer Details -->
+            <div class="form-group">
+                <label for="customer_mobile">Customer Mobile</label>
+                <input type="text" id="customer_mobile" name="mobile" class="form-control" required oninput="fetchCustomerDetails(this.value)">
+            </div>
+            <div class="form-group">
+                <label for="customer_name">Customer Name</label>
+                <input type="text" id="customer_name" name="name" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label for="customer_address">Address</label>
+                <input type="text" id="customer_address" name="address" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="customer_mail">Email</label>
+                <input type="email" id="customer_mail" name="mail" class="form-control">
+            </div>
+        
+            <!-- Invoice Items -->
+            <h4>Invoice Items</h4>
+            <div id="product-container">
+                <div class="form-row mb-3 product-item">
+                    <div class="col">
+                        <label for="product_id[]">Product ID</label>
+                        <input type="text" name="product_id[]" class="form-control product_id" placeholder="Enter Product ID" onblur="fetchProductDetails(this)">
+                    </div>
+                    <div class="col">
+                        <label for="product_name[]">Product Name</label>
+                        <input type="text" name="product_name[]" class="form-control product_name" placeholder="Product Name" oninput="suggestProductNames(this)">
+                        <ul class="suggestions-list" style="display: none;"></ul>
+                    </div>
+                    <div class="col">
+                        <label for="quantity[]">Quantity</label>
+                        <input type="number" name="quantity[]" class="form-control quantity" required oninput="calculateTotal()">
+                    </div>
+                    <div class="col">
+                        <label for="price[]">Price</label>
+                        <input type="number" name="price[]" class="form-control price" required oninput="calculateTotal()">
+                    </div>
+                    <div class="col">
+                        <label for="discount[]">Discount</label>
+                        <input type="number" name="discount[]" class="form-control discount" value="0" oninput="calculateTotal()">
+                    </div>
+                    <div class="col">
+                        <label for="amount[]">Amount</label>
+                        <input type="number" name="amount[]" class="form-control amount" readonly>
+                    </div>
+                    <div class="col d-flex align-items-end">
+                        <i class="fas fa-trash-alt text-danger" style="cursor: pointer;" onclick="removeProduct(this)"></i>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="button" class="btn btn-primary" onclick="addProduct()">➕ Add Product</button>
+        
+           <!-- Total -->
+<div class="form-group">
+    <label for="total_amount">Total Amount</label>
+    <input type="number" id="total_amount" name="total_amount" class="form-control" readonly>
+</div>
+
+        
+<!-- Payment Details -->
+<div class="form-group">
+    <label for="payment_method">Payment Method</label>
+    <select id="payment_method" name="payment_method" class="form-control" required>
+        <option value="" selected disabled>Select Payment Method</option>
+        <option value="cash">Cash</option>
+        <option value="credit_card">Credit Card</option>
+        <option value="bank_transfer">Bank Transfer</option>
+        <option value="unpaid">Unpaid</option>
+    </select>
+</div>
+
+<!-- Hidden Input Fields for Status and Payment Status -->
+<input type="hidden" name="status" id="status" value="Pending">
+<input type="hidden" name="payment_status" id="payment_status" value="Unpaid">
+
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const paymentMethod = document.getElementById('payment_method');
+        const totalPaid = document.getElementById('total_paid');
+        const totalAmount = document.getElementById('total_amount');
+        const discount = document.getElementById('discount');
+    
+        // Calculate total
+        function calculateTotal() {
+            let total = 0;
+            document.querySelectorAll('.product-item').forEach(row => {
+                const qty = parseFloat(row.querySelector('.quantity').value) || 0;
+                const price = parseFloat(row.querySelector('.price').value) || 0;
+                const disc = parseFloat(row.querySelector('.discount').value) || 0;
+                const amount = (qty * price) - disc;
+                row.querySelector('.amount').value = amount.toFixed(2);
+                total += amount;
+            });
+            totalAmount.value = (total - (parseFloat(discount.value) || 0)).toFixed(2);
+        }
+    
+        // Reset total_paid when unpaid is selected
+        paymentMethod.addEventListener('change', function() {
+            if (this.value === 'unpaid') {
+                totalPaid.value = '0';
+                console.log("Payment Method changed to Unpaid, Total Paid set to:", totalPaid.value);
+            }
+        });
+    
+        // Prevent total_paid from being set unless payment method is valid
+        totalPaid.addEventListener('input', function() {
+            if (paymentMethod.value === 'unpaid') {
+                this.value = '0';
+                console.log("Total Paid reset to 0 because Payment Method is Unpaid");
+            }
+        });
+    
+        // Log form submission
+        document.querySelector('form').addEventListener('submit', function(e) {
+            console.log("Form Submitted - Payment Method:", paymentMethod.value, "Total Paid:", totalPaid.value, "Total Amount:", totalAmount.value);
+        });
+    
+        window.addProduct = function() {/* unchanged */};
+        window.removeProduct = function(button) {/* unchanged */};
+        window.validateForm = function() {/* unchanged */};
+    
+        calculateTotal();
+    });
+    </script>
+
+
+        
+          
+        
+            <button type="submit" class="btn btn-success" >Create Invoice</button>
+            <button type="button" class="btn btn-secondary" onclick="cancelInvoice()">Cancel</button>
+            <button type="button" class="btn btn-info" onclick="printInvoice()">Print</button>
+        
+            
+
+            <script>
+            // Add the event listener to handle download when clicking the "Create Invoice" button
+            function downloadInvoice(event) {
+                event.preventDefault(); // Prevent form submission
+            
+
+                
+                // Generate the invoice content (same as your current printInvoice logic)
+                let invoiceContent = `
+                    <html>
+                    <head>
+                        <title>Invoice</title>
+                        <style>
+                            body {
+                                font-family: Arial, sans-serif;
+                                padding: 20px;
+                            }
+                            .invoice-container {
+                                width: 100%;
+                                max-width: 800px;
+                                margin: auto;
+                                border: 1px solid #000;
+                                padding: 20px;
+                                display: flex;
+                                flex-direction: column;
+                            }
+                            .header {
+                                display: flex;
+                                flex-direction: column;
+                                justify-content: center;
+                                align-items: center;
+                                margin-bottom: 20px;
+                            }
+                            .logo {
+                                text-align: center;
+                                margin-bottom: 10px; /* Adds some space between logo and details */
+                            }
+                            .details {
+                                text-align: center;
+                            }
+                            .header img {
+                                max-width: 100px;
+                            }
+                            h2 {
+                                font-size: 22px;
+                                font-weight: bold;
+                                text-transform: uppercase;
+                                margin: 0;
+                            }
+                            p {
+                                margin: 0;
+                                font-size: 14px;
+                                text-align: left;
+                                color: #B2BEB5;
+                            }
+                            .details {
+                                width: 100%;
+                                display: flex;
+                                justify-content: space-between;
+                                gap: 10px;
+                                margin-top: 10px;
+                            }
+                            .box {
+                                width: 48%;
+                                border: 2px solid #000;
+                                padding: 15px;
+                                background: #f9f9f9;
+                                border-radius: 8px;
+                                box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.1);
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 20px;
+                            }
+                            table, th, td {
+                                border: 1px solid black;
+                            }
+                            th, td {
+                                padding: 8px;
+                                text-align: left;
+                            }
+                            .total {
+                                font-weight: bold;
+                                text-align: right;
+                            }
+                            .notes {
+                                margin-top: 30px;
+                                font-size: 12px;
+                            }
+                            .signature {
+                                margin-top: 30px;
+                                display: flex;
+                                justify-content: space-between;
+                            }
+                            .signature div {
+                                width: 45%;
+                                text-align: center;
+                                border-top: 1px solid black;
+                                padding-top: 5px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="invoice-container">
+                            <div class="header">
+                                <div class="logo">
+                                    <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="Company Logo">
+                                    <h2>ASKER ENTERPRISE</h2>
+                                </div>
+                                <div class="details">
+                                    <p>NO: 2404 4TH FLOOR MALAYAN MANSION, <br> MASJID INDIA, KUALA LUMPUR – 50100</p>
+                                    <p>Contact: 0182843318 <br> Mail: ajmeerdon@gmail.com</p>
+                                </div>
+                            </div>
+            
+                            <div class="details">
+                                <div class="box">
+                                    <strong>Billing To:</strong>
+                                    <p>Customer Name: <span id="display_customer_name">N/A</span></p>
+                                    <p>Address: <span id="display_customer_address">N/A</span></p>
+                                    <p>Mobile: <span id="display_customer_mobile">N/A</span></p>
+                                </div>
+                                <div class="box">
+                                    <strong>Invoice Details:</strong>
+                                    <p>Invoice No: <span id="display_invoice_no">AS23/1078</span></p>
+                                    <p>Date: <span id="display_date"></span></p>
+                                    <p>Sales By: <span id="display_sales_by">Staff</span></p>
+                                </div>
+                            </div>
+            
+                            <table>
+                                <tr>
+                                    <th>S.No</th>
+                                    <th>Product ID</th>
+                                    <th>Product</th>
+                                    <th>Qty</th>
+                                    <th>Unit</th>
+                                    <th>Price / Unit</th>
+                                    <th>Disc %</th>
+                                    <th>Amount RM</th>
+                                </tr>
+                `;
+                
+                let serialNumber = 1;
+                let totalAmount = 0;
+                
+                document.querySelectorAll('.product-item').forEach(row => {
+                    let itemCode = row.querySelector('[name="product_id[]"]')?.value || "N/A";
+                    let productName = row.querySelector('[name="product_name[]"]')?.value || "Unknown";
+                    let quantity = parseFloat(row.querySelector('[name="quantity[]"]')?.value) || 0;
+                    let unit = row.querySelector('[name="unit[]"]')?.value || "PCS";
+                    let price = parseFloat(row.querySelector('[name="price[]"]')?.value) || 0;
+                    let discount = parseFloat(row.querySelector('[name="discount[]"]')?.value) || 0;
+                    let amount = quantity * price * (1 - discount / 100);
+                    totalAmount += amount;
+            
+                    invoiceContent += `
+                        <tr>
+                            <td>${serialNumber++}</td>
+                            <td>${itemCode}</td>
+                            <td>${productName}</td>
+                            <td>${quantity}</td>
+                            <td>${unit}</td>
+                            <td>${price.toFixed(2)}</td>
+                            <td>${discount.toFixed(2)}</td>
+                            <td>${amount.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+            
+                let gstAmount = totalAmount * 0.10; // 10% GST
+                let totalInclGST = totalAmount + gstAmount;
+            
+                invoiceContent += `
+                        </table>
+                        <h3 class="total" style="margin-top: 20px; font-size: 18px;">Total Excl. GST: RM ${totalAmount.toFixed(2)}</h3>
+                        <h3 class="total"  style="margin-top: 10px; font-size: 18px;">Total GST (10%): RM ${gstAmount.toFixed(2)}</h3>
+                        <h3 class="total"  style="margin-top: 10px; font-size: 18px;">Total Incl. GST: RM ${totalInclGST.toFixed(2)}</h3>
+                        <div class="notes">
+                            <strong>E & O.E</strong><br>
+                            <p>RM: Thirty Thousand only</p>
+                            <p><strong>Notes:</strong></p>
+                            <ol>
+                                <li>Interest of 1.5% will be imposed after 30 days of delivery of goods on credit period.</li>
+                                <li>All cheques should be crossed and made payable to ASKER ENTERPRISE.</li>
+                                <li>All cash payments must be made directly to the Account Department.</li>
+                                <li>The property of the goods in this bill shall remain with the seller until full payment has been received. The seller has the right of entry and seizure in case of non-payment.</li>
+                                <li>Please inform us of any discrepancies within 1 day from the invoice date.</li>
+                            </ol>
+                        </div>
+                        <div class="signature">
+                            <div>Authorised Signature</div>
+                            <div>Received Goods in Good Condition & as per above</div>
+                        </div>
+                    </div>
+                    </body>
+                    </html>
+                `;
+            
+                // Create a Blob from the invoice HTML content
+                let blob = new Blob([invoiceContent], { type: 'application/pdf' });
+                let link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `${serialNumber++}.html`; // The filename for the download
+                link.click(); // Trigger the download
+            }
+            </script>
+            
+            
+            <script>
+
+
+            function printInvoice() {
+                let invoiceContent = `
+                    <html>
+                    <head>
+                        <title>Invoice</title>
+                        <style>
+                            body {
+                                font-family: Arial, sans-serif;
+                                padding: 20px;
+                            }
+                            .invoice-container {
+  width: 100%;
+  max-width: 800px;
+  margin: auto;
+  border: 1px solid #000;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.logo {
+  text-align: center;
+  margin-bottom: 10px; /* Adds some space between logo and details */
+}
+
+.details {
+  text-align: center;
+}
+
+.header img {
+  max-width: 100px;
+}
+
+h2 {
+  font-size: 22px;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin: 0; /* Removes default margins */
+}
+
+p {
+  margin: 0; /* Removes default margins for paragraphs */
+  font-size: 14px; /* Adjusted font size for better readability */
+  text-align: left; /* Aligns text to the left */
+  color: #B2BEB5; /* Sets text color to ash */
+}
+
+                           .details {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;  /* Adds space between boxes */
+    margin-top: 10px;
+}
+
+.box {
+    width: 48%;
+    border: 2px solid #000; /* Darker border for visibility */
+    padding: 15px;
+    background: #f9f9f9; /* Light background to distinguish */
+    border-radius: 8px; /* Smooth corners */
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.1); /* Soft shadow for better visibility */
+}
+
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 20px;
+                            }
+                            table, th, td {
+                                border: 1px solid black;
+                            }
+                            th, td {
+                                padding: 8px;
+                                text-align: left;
+                            }
+                            .total {
+                                font-weight: bold;
+                                text-align: right;
+                            }
+                            .notes {
+                                margin-top: 30px;
+                                font-size: 12px;
+                            }
+                            .signature {
+                                margin-top: 30px;
+                                display: flex;
+                                justify-content: space-between;
+                            }
+                            .signature div {
+                                width: 45%;
+                                text-align: center;
+                                border-top: 1px solid black;
+                                padding-top: 5px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="invoice-container">
+    <div class="header">
+        <div class="logo">
+            <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="Company Logo">
+            <h2>ASKER ENTERPRISE</h2>
+        </div>
+        <div class="details">
+            <p>NO: 2404 4TH FLOOR MALAYAN MANSION, <br> MASJID INDIA, KUALA LUMPUR – 50100</p>
+            <p>Contact: 0182843318 <br> Mail: ajmeerdon@gmail.com</p>
+        </div>
+    </div>
+</div>
+
+
+            
+                       <div class="details">
+    <div class="box">
+        <strong>Billing To:</strong>
+        <p>Customer Name: <span id="display_customer_name">N/A</span></p>
+        <p>Address: <span id="display_customer_address">N/A</span></p>
+        <p>Mobile: <span id="display_customer_mobile">N/A</span></p>
+    </div>
+    <div class="box">
+        <strong>Invoice Details:</strong>
+        <p>Invoice No: <span id="display_invoice_no">AS23/1078</span></p>
+        <p>Date: <span id="display_date"></span></p>
+        <p>Sales By: <span id="display_sales_by">Staff</span></p>
+    </div>
+</div>
+
+            
+                            <table>
+                                <tr>
+                                    <th>S.No</th>
+                                    <th>Product ID</th>
+                                    <th>Product</th>
+                                    <th>Qty</th>
+                                    <th>Unit</th>
+                                    <th>Price / Unit</th>
+                                    <th>Disc %</th>
+                                    <th>Amount RM</th>
+                                </tr>
+                `;
+            
+                let serialNumber = 1;
+                let totalAmount = 0;
+            
+                document.querySelectorAll('.product-item').forEach(row => {
+                    let itemCode = row.querySelector('[name="product_id[]"]')?.value || "N/A";
+                    let productName = row.querySelector('[name="product_name[]"]')?.value || "Unknown";
+                    let quantity = parseFloat(row.querySelector('[name="quantity[]"]')?.value) || 0;
+                    let unit = row.querySelector('[name="unit[]"]')?.value || "PCS";
+                    let price = parseFloat(row.querySelector('[name="price[]"]')?.value) || 0;
+                    let discount = parseFloat(row.querySelector('[name="discount[]"]')?.value) || 0;
+                    let amount = quantity * price * (1 - discount / 100);
+                    totalAmount += amount;
+            
+                    invoiceContent += `
+                        <tr>
+                            <td>${serialNumber++}</td>
+                            <td>${itemCode}</td>
+                            <td>${productName}</td>
+                            <td>${quantity}</td>
+                            <td>${unit}</td>
+                            <td>${price.toFixed(2)}</td>
+                            <td>${discount.toFixed(2)}</td>
+                            <td>${amount.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+            
+                let gstAmount = totalAmount * 0.10; // 10% GST
+                let totalInclGST = totalAmount + gstAmount;
+            
+                invoiceContent += `
+                            </table>
+            
+                            <h3 class="total" style="margin-top: 20px; font-size: 18px;">Total Excl. GST: RM ${totalAmount.toFixed(2)}</h3>
+<h3 class="total"  style="margin-top: 10px; font-size: 18px;">Total GST (10%): RM ${gstAmount.toFixed(2)}</h3>
+<h3 class="total"  style="margin-top: 10px; font-size: 18px;">Total Incl. GST: RM ${totalInclGST.toFixed(2)}</h3>
+
+            
+                            <div class="notes">
+                                <strong>E & O.E</strong><br>
+                                <p>RM: Thirty Thousand only</p>
+                                <p><strong>Notes:</strong></p>
+                                <ol>
+                                    <li>Interest of 1.5% will be imposed after 30 days of delivery of goods on credit period.</li>
+                                    <li>All cheques should be crossed and made payable to ASKER ENTERPRISE.</li>
+                                    <li>All cash payments must be made directly to the Account Department.</li>
+                                    <li>The property of the goods in this bill shall remain with the seller until full payment has been received. The seller has the right of entry and seizure in case of non-payment.</li>
+                                    <li>Please inform us of any discrepancies within 1 day from the invoice date.</li>
+                                </ol>
+                            </div>
+            
+                            <div class="signature">
+                                <div>Authorised Signature</div>
+                                <div>Received Goods in Good Condition & as per above</div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                `;
+            
+                let printWindow = window.open('', '', 'width=800,height=900');
+                printWindow.document.open();
+                printWindow.document.write(invoiceContent);
+                printWindow.document.close();
+                printWindow.print();
+            }
+            </script>
+            
+        </form>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>

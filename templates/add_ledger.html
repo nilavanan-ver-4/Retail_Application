@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block title %}Add Ledger Entry{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center">Add Ledger Entry</h2>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('add_ledger') }}">
+        <!-- Transaction Date -->
+        <div class="mb-3">
+            <label class="form-label" for="transaction_date">Transaction Date:</label>
+            <input type="date" name="transaction_date" class="form-control" id="transaction_date" required>
+        </div>
+
+        <!-- Select Invoice No or Mobile No -->
+        <div class="mb-3">
+            <label class="form-label" for="identifier_type">Select Identifier:</label>
+            <select class="form-control" id="identifier_type" name="identifier_type">
+                <option value="invoice">Invoice No</option>
+                <option value="mobile">Mobile Number</option>
+            </select>
+        </div>
+
+        <!-- Invoice Number Selection -->
+        <div class="mb-3" id="invoice_section">
+            <label class="form-label" for="invoice_no">Invoice No:</label>
+            <input type="text" name="invoice_no" class="form-control" id="invoice_no" placeholder="Enter Invoice Number">
+        </div>
+
+        <!-- Mobile Number Selection -->
+        <div class="mb-3" id="mobile_section" style="display: none;">
+            <label class="form-label" for="customer_id">Mobile Number:</label>
+            <input type="text" name="customer_id" class="form-control" id="customer_id" placeholder="Enter Mobile Number">
+        </div>
+
+        <!-- Amount -->
+        <div class="mb-3">
+            <label class="form-label" for="amount">Amount:</label>
+            <input type="number" name="amount" class="form-control" id="amount" required>
+        </div>
+
+        <!-- Transaction Type -->
+        <div class="mb-3">
+            <label class="form-label" for="transaction_type">Transaction Type:</label>
+            <select name="transaction_type" class="form-control" id="transaction_type" required>
+                <option value="Debit">Debit</option>
+                <option value="Credit">Credit</option>
+            </select>
+        </div>
+
+        <!-- Description -->
+        <div class="mb-3">
+            <label class="form-label" for="description">Description (Optional):</label>
+            <textarea name="description" class="form-control" id="description" rows="3"></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Add Ledger Entry</button>
+        <a href="{{ url_for('ledger') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+
+<script>
+document.getElementById("identifier_type").addEventListener("change", function() {
+    document.getElementById("invoice_section").style.display = this.value === "invoice" ? "block" : "none";
+    document.getElementById("mobile_section").style.display = this.value === "mobile" ? "block" : "none";
+});
+</script>
+
+{% endblock %}

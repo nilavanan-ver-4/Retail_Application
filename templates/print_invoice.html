@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print Invoice</title>
+</head>
+<body onload="generateAndPrintInvoice()">
+    <script>
+        function generateAndPrintInvoice() {
+            // Retrieve data from localStorage
+            let productItems = JSON.parse(localStorage.getItem('invoiceData')) || [];
+            let invoiceDetails = JSON.parse(localStorage.getItem('invoiceDetails')) || {};
+
+            // Generate the invoice content
+            let invoiceContent = `
+Invoice
+ASKER ENTERPRISE
+NO: 2404 4TH FLOOR MALAYAN MANSION,  MASJID INDIA, KUALA LUMPUR – 50100
+Contact: 0182843318  Mail: ajmeerdon@gmail.com
+Billing To:
+Customer Name: N/A
+Address: N/A
+Mobile: N/A
+Invoice Details:
+Invoice No: ${invoiceDetails.invoiceNo || 'N/A'}
+Date: ${invoiceDetails.date || 'N/A'}
+Sales By: ${invoiceDetails.salesBy || 'N/A'}
+S.No
+Product ID
+Product
+Qty
+Unit
+Price / Unit
+Disc %
+Amount RM
+            `;
+
+            let serialNumber = 1;
+            let totalAmount = 0;
+
+            productItems.forEach(item => {
+                let amount = item.quantity * item.price * (1 - item.discount / 100);
+                totalAmount += amount;
+
+                invoiceContent += `
+${serialNumber++}
+${item.product_id}
+${item.product_name}
+${item.quantity}
+${item.unit}
+${item.price.toFixed(2)}
+${item.discount.toFixed(2)}
+${amount.toFixed(2)}
+                `;
+            });
+
+            let gstAmount = totalAmount * 0.10; // 10% GST
+            let totalInclGST = totalAmount + gstAmount;
+
+            invoiceContent += `
+Total Excl. GST: RM ${totalAmount.toFixed(2)}
+Total GST (10%): RM ${gstAmount.toFixed(2)}
+Total Incl. GST: RM ${totalInclGST.toFixed(2)}
+E & O.E
+RM: Thirty Thousand only
+Notes:
+Interest of 1.5% will be imposed after 30 days of delivery of goods on credit period.
+All cheques should be crossed and made payable to ASKER ENTERPRISE.
+All cash payments must be made directly to the Account Department.
+The property of the goods in this bill shall remain with the seller until full payment has been received. The seller has the right of entry and seizure in case of non-payment.
+Please inform us of any discrepancies within 1 day from the invoice date.
+Authorised Signature
+Received Goods in Good Condition & as per above
+            `;
+
+            // Write the content to the new page
+            document.body.innerHTML = `<pre>${invoiceContent}</pre>`;
+
+            // Trigger the print dialog
+            window.print();
+        }
+    </script>
+</body>
+</html>

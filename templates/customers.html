@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+<!-- <h1>Customer Management</h1> -->
+
+<!-- Customer Actions Container -->
+<div class="customer-actions">
+    <!-- Add Customer Button -->
+    <a href="{{ url_for('add_customer') }}" class="add-button">
+        <i class="fas fa-user-plus"></i> Add Customer
+    </a>
+    <h2>Or</h2>
+    <!-- Import Customers Form -->
+    <form action="{{ url_for('import_customers') }}" method="POST" enctype="multipart/form-data" class="upload-form">
+        <label for="file-upload" class="upload-box">
+            <i class="fas fa-folder-open"></i>
+            <span id="file-name">Drag & Drop or Click to Upload</span>
+            <input id="file-upload" type="file" name="file" accept=".csv, .xlsx" required onchange="updateFileName(this)">
+        </label>
+        <button type="submit" class="import-button">
+            <i class="fas fa-file-import"></i> Import Customers
+        </button>
+    </form>
+</div>
+
+<!-- CSS Styling -->
+<style>
+    /* Main Container */
+    .customer-actions {
+        display: flex;
+        align-items: center;
+        gap: 25px;
+        justify-content: center;
+        margin-top: 20px;
+        flex-wrap: wrap;
+    }
+
+    /* Add New Customer Button */
+    .add-button {
+        background: linear-gradient(to right, #007BFF, #00C6FF);
+        color: white;
+        padding: 12px 22px;
+        font-size: 16px;
+        text-decoration: none;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
+        font-weight: 600;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .add-button:hover {
+        background: linear-gradient(to right, #0056b3, #0084ff);
+        transform: scale(1.05);
+    }
+
+    /* Upload Form */
+    .upload-form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+    }
+
+    /* Upload Box */
+    .upload-box {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 280px;
+        height: 60px;
+        border: 2px dashed #007bff;
+        border-radius: 10px;
+        background: #f8f9fa;
+        cursor: pointer;
+        font-weight: 500;
+        color: #555;
+        transition: all 0.3s ease;
+        text-align: center;
+        padding: 10px;
+        font-size: 16px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .upload-box:hover {
+        background: #e3eaf2;
+        border-color: #0056b3;
+        transform: scale(1.02);
+    }
+
+    /* Hide Default File Input */
+    #file-upload {
+        display: none;
+    }
+
+    /* Import Button */
+    .import-button {
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        color: white;
+        padding: 12px 22px;
+        font-size: 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .import-button:hover {
+        background: linear-gradient(135deg, #0056b3, #003d80);
+        transform: scale(1.05);
+    }
+</style>
+
+<!-- JavaScript to Show Selected File Name -->
+<script>
+    function updateFileName(input) {
+        document.getElementById('file-name').textContent = input.files[0] ? "✅ " + input.files[0].name : "Drag & Drop or Click to Upload";
+    }
+</script>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+
+
+<style>
+.styled-button {
+    background-color: #4CAF50; /* Green */
+    border: none;
+    color: white;
+    padding: 15px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 12px;
+    transition-duration: 0.4s;
+}
+
+.styled-button:hover {
+    background-color: white;
+    color: black;
+    border: 1px solid #4CAF50;
+}
+</style>
+
+<table>
+    <tr>
+        <th>Customer Name</th>
+        <th>Mobile</th>
+        <th>Address</th>
+        <th>Mail</th>  <!-- Change "Email" to "Mail" -->
+        <th>Actions</th>
+    </tr>
+    {% for customer in data %}
+    <tr>
+        <!-- Access tuple elements using indices -->
+        <td>{{ customer[2] }}</td>  <!-- customer[2] is 'name' -->
+        <td>{{ customer[1] }}</td>  <!-- customer[1] is 'mobile' -->
+        <td>{{ customer[3] }}</td>  <!-- customer[3] is 'address' -->
+        <td>{{ customer[4] }}</td>  <!-- customer[4] is 'mail' -->
+        <td>
+            <style>
+                .icon-link {
+                    color: #1da1f2; /* You can change this color to whatever you like */
+                    text-decoration: none;
+                    font-size: larger;
+                }
+            
+                .icon-link:hover {
+                    color: #0d8cec; /* Change color on hover if you like */
+                }
+            </style>
+            
+            <!-- WhatsApp Link -->
+            <a href="https://wa.me/{{ customer[1] }}" class="icon-link">
+                <i class="fab fa-whatsapp"></i> 
+            </a> |
+            
+            <!-- Mail Link -->
+            <a href="mailto:{{ customer[4] }}" class="icon-link">
+                <i class="fas fa-envelope"></i> 
+            </a> |
+            
+            <!-- Update Customer Link -->
+            <a href="{{ url_for('update_customer', customer_id=customer[0]) }}" class="icon-link">
+              <i class="fas fa-edit"></i> 
+          </a>
+          
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

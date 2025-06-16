@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Inventory Item{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center">Edit Inventory Item</h2>
+
+    <form action="{{ url_for('edit_inventory', item_id=item_id) }}" method="POST" class="needs-validation" novalidate>
+        <div class="mb-3">
+            <label for="product_name" class="form-label">Product Name:</label>
+            <input type="text" id="product_name" name="product_name" class="form-control" value="{{ item_data[1] }}" disabled>
+        </div>
+
+        <div class="mb-3">
+            <label for="quantity" class="form-label">Quantity</label>
+            <input type="number" class="form-control" id="quantity" name="quantity" value="{{ item_data[2] }}" min="0" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="unit" class="form-label">Unit:</label>
+            <input type="text" id="unit" name="unit" class="form-control" value="{{ item_data[3] }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="category" class="form-label">Category:</label>
+            <input type="text" id="category" name="category" class="form-control" value="{{ item_data[5] }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="hs_code" class="form-label">HS Code:</label>
+            <input type="text" id="hs_code" name="hs_code" class="form-control" value="{{ item_data[6] }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="expiry_date" class="form-label">Expiry Date:</label>
+            <input type="date" id="expiry_date" name="expiry_date" class="form-control" value="{{ item_data[7] }}" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="availability" class="form-label">Availability:</label>
+            <select id="availability" name="availability" class="form-select">
+                <option value="True" {% if item_data[8] %} selected {% endif %}>In Stock</option>
+                <option value="False" {% if not item_data[8] %} selected {% endif %}>Out of Stock</option>
+            </select>
+        </div>
+
+        <div class="d-flex justify-content-between">
+            <a href="{{ url_for('inventory') }}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Update Item</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    // Bootstrap validation
+    (function () {
+        'use strict';
+        var forms = document.querySelectorAll('.needs-validation');
+        Array.prototype.slice.call(forms).forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                if (!form.checkValidity()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        });
+    })();
+</script>
+
+{% endblock %}

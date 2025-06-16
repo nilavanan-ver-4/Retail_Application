@@ -1,0 +1,7 @@
+flask 
+flask-sqlalchemy 
+pyodbc
+urllib3
+psycopg2
+weasyprint
+pandas

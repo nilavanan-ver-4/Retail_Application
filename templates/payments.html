@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payments</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h2 class="text-center mb-4">Payments</h2>
+        
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="alert alert-dismissible fade show" role="alert">
+                    <ul class="mb-0">
+                        {% for category, message in messages %}
+                            <li class="{{ category }}">{{ message }}</li>
+                        {% endfor %}
+                    </ul>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        <!-- Payments Table -->
+        {% if data %}
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Invoice No</th>
+                        <th>Invoice Date</th>
+                        <th>Total Amount</th>
+                        <th>Paid Amount</th>
+                        <th>Payment Mode</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for payment in data %}
+                        <tr>
+                            <td>{{ payment.invoice_no }}</td>
+                            <td>{{ payment.invoice_date }}</td>
+                            <td>₹{{ payment.total_amount }}</td>
+                            <td>₹{{ payment.amount }}</td>
+                            <td>{{ payment.payment_mode }}</td>
+                            <td>
+                                <span class="badge {% if payment.status == 'Paid' %}bg-success{% elif payment.status == 'Partially Paid' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                                    {{ payment.status }}
+                                </span>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <p class="text-center text-danger">No payment records found.</p>
+        {% endif %}
+        
+        <div class="text-center mt-4">
+            <a href="{{ url_for('create_invoice') }}" class="btn btn-primary">Create Invoice</a>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

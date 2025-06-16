@@ -1,0 +1,4 @@
+id,name,terms,mobile,mail,timestamp,company
+1,ABC Suppliers,"Net 30 payment terms",9876543210,abc@example.com,2024-02-23 10:00:00,ABC Pvt Ltd
+2,XYZ Distributors,"Cash on delivery",9123456789,xyz@example.com,2024-02-23 11:30:00,XYZ Corp
+3,LMN Wholesalers,"Credit limit: $5000",9567891234,lmn@example.com,2024-02-23 12:15:00,LMN Traders

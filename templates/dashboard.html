@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 class="dashboard-title">Dashboard Overview</h1>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    body {
+        font-family: 'Poppins', sans-serif;
+        background: #f4f4f9;
+        color: #333;
+        margin: 0;
+        padding: 0;
+    }
+
+    .dashboard-title {
+        text-align: center;
+        font-size: 2.2rem;
+        color: #444;
+        margin-bottom: 20px;
+    }
+
+    .dashboard-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        padding: 20px;
+        max-width: 1200px;
+        margin: auto;
+    }
+
+    .summary-card {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s ease-in-out;
+    }
+
+    .summary-card:hover {
+        transform: scale(1.03);
+    }
+
+    .summary-card h3 {
+        margin: 0 0 10px;
+        font-size: 1.4rem;
+        color: #2c3e50;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .summary-card p, .summary-card ul li {
+        font-size: 1.1rem;
+        color: #555;
+        margin: 5px 0;
+    }
+
+    .count {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+
+    .low-stock {
+        background: #ffebeb;
+        border-left: 5px solid #e74c3c;
+    }
+
+    .revenue {
+        background: #e8f6f3;
+        border-left: 5px solid #16a085;
+    }
+
+    span {
+        font-weight: bold;
+        color: #2c3e50;
+    }
+
+    @media (max-width: 768px) {
+        .dashboard-container {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="dashboard-container">
+    <div class="summary-card">
+        <h3><i class="fas fa-users"></i> Total Customers</h3>
+        <p class="count">{{ data['total_customers'][0][0] if data['total_customers'] else 0 }}</p>
+    </div>
+
+    <div class="summary-card">
+        <h3><i class="fas fa-shopping-cart"></i> Total Orders</h3>
+        <p class="count">{{ data['total_orders'][0][0] if data['total_orders'] else 0 }}</p>
+    </div>
+
+    <div class="summary-card">
+        <h3><i class="fas fa-chart-line"></i> Sales Overview</h3>
+        <p>📅 Today: <span>₹ {{ data['total_sales_today'][0][0] if data['total_sales_today'] else 0 }}</span></p>
+        <p>📆 This Month: <span>₹ {{ data['total_sales_month'][0][0] if data['total_sales_month'] else 0 }}</span></p>
+        <p>📊 Last 7 Days: <span>₹ {{ data['total_sales_week'][0][0] if data['total_sales_week'] else 0 }}</span></p>
+    </div>
+
+    <div class="summary-card">
+        <h3><i class="fas fa-money-bill"></i> Avg. Order Value</h3>
+        <p class="count">₹ {{ data['average_order_value'][0][0] if data['average_order_value'] else 0 }}</p>
+    </div>
+
+    <div class="summary-card">
+        <h3><i class="fas fa-fire"></i> Best-Selling Products</h3>
+        <ul>
+            {% if data['best_selling_products'] %}
+                {% for product in data['best_selling_products'] %}
+                    <li>🔥 {{ product[0] }} - <b>{{ product[1] }}</b> Sold</li>
+                {% endfor %}
+            {% else %}
+                <li>No data available</li>
+            {% endif %}
+        </ul>
+    </div>
+
+    <div class="summary-card low-stock">
+        <h3><i class="fas fa-box-open"></i> Low Stock Products</h3>
+        <ul>
+            {% if data['low_stock'] %}
+                {% for product in data['low_stock'] %}
+                    <li>⚠️ {{ product[0] }} - <b>{{ product[1] }}</b> Left</li>
+                {% endfor %}
+            {% else %}
+                <li>No data available</li>
+            {% endif %}
+        </ul>
+    </div>
+</div>
+
+<div class="dashboard-container">
+    <div class="summary-card">
+        <h3><i class="fas fa-chart-bar"></i> Sales Trend</h3>
+        <canvas id="salesChart"></canvas>
+    </div>
+</div>
+
+<script>
+    const salesData = {{ data['daily_sales_trend'] | default([]) | tojson }};
+    if (salesData.length > 0) {
+        const salesCtx = document.getElementById('salesChart').getContext('2d');
+        new Chart(salesCtx, {
+            type: 'line',
+            data: {
+                labels: salesData.map(s => s[0]),
+                datasets: [{
+                    label: 'Sales in ₹',
+                    data: salesData.map(s => s[1]),
+                    borderColor: 'blue',
+                    backgroundColor: 'rgba(0, 0, 255, 0.1)',
+                    borderWidth: 2
+                }]
+            }
+        });
+    }
+</script>
+
+{% endblock %}
