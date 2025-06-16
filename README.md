@@ -1,6 +1,3 @@
-I'll enhance the README file for the Retail Application to make it more visually appealing and engaging by using better formatting, adding emojis, and organizing the content with clearer sections. This will make the README more attractive while keeping the core information intact.
-
-
 # 🛍️ Retail Application
 
 Welcome to the **Retail Application**! This is a powerful and modern retail management solution built with Flask, PostgreSQL, and Python. Whether you're managing inventory, generating reports, or handling transactions, this app has got you covered! 🚀
