@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% load retail %}{% block title %}{{ object.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ object.name }} {% if not object.is_active %}<span class="badge badge-bad">Archived</span>{% endif %}</h1>
+<div class="actions">
+{% if perms.products.change_product %}<a class="btn" href="{% url 'products:update' object.pk %}">Edit</a>
+{% if object.is_active %}<form class="inline" method="post" action="{% url 'products:archive' object.pk %}" data-confirm="Archive this product? It can no longer be sold; history is kept.">{% csrf_token %}<button class="btn danger" type="submit">Archive</button></form>
+{% else %}<form class="inline" method="post" action="{% url 'products:restore' object.pk %}">{% csrf_token %}<button class="btn" type="submit">Restore</button></form>{% endif %}{% endif %}
+{% if perms.inventory.adjust_stock %}<a class="btn" href="{% url 'inventory:adjust' %}?product={{ object.pk }}">Adjust stock</a>{% endif %}
+{% if perms.purchasing.receive_goods %}<a class="btn" href="{% url 'purchasing:quick_receive' object.pk %}">Receive stock</a>{% endif %}
+</div></div>
+<div class="cards">
+  <div class="stat"><span>Selling price</span><b>{{ object.selling_price|money }}</b></div>
+  {% if show_cost %}<div class="stat"><span>Cost</span><b>{{ object.cost_price|money }}</b></div>
+  <div class="stat"><span>Stock value (at cost)</span><b>{{ object.stock_value|money }}</b></div>{% endif %}
+  <div class="stat {% if object.is_out_of_stock %}bad{% elif object.is_low_stock %}warn{% else %}ok{% endif %}"><span>On hand</span><b>{{ object.stock_on_hand }} {{ object.unit }}</b></div>
+  <div class="stat"><span>Availability level (1-5)</span><b>{{ object.availability_level }}</b></div>
+</div>
+<div class="grid2">
+<div class="card"><h2 style="margin-top:0">Details</h2><dl class="kv">
+<dt>SKU</dt><dd>{{ object.sku }}</dd><dt>Barcode</dt><dd>{{ object.barcode|default:"–" }}</dd>
+<dt>Category</dt><dd>{{ object.category }}</dd><dt>Brand</dt><dd>{{ object.brand|default:"–" }}</dd>
+<dt>Unit</dt><dd>{{ object.unit }}</dd><dt>HS code</dt><dd>{{ object.hs_code|default:"–" }}</dd>
+<dt>Tax rate</dt><dd>{{ object.tax_rate }}%</dd><dt>Reorder level</dt><dd>{{ object.reorder_level }}</dd>
+<dt>Expiry</dt><dd>{{ object.expiry_date|default:"–" }}</dd><dt>Supplier</dt><dd>{{ object.supplier|default:"–" }}</dd>
+<dt>Description</dt><dd>{{ object.description|default:"–" }}</dd></dl>
+{% if object.image %}<img src="{{ object.image.url }}" alt="{{ object.name }}" style="max-width:200px;margin-top:10px;border-radius:6px">{% endif %}</div>
+<div class="card"><h2 style="margin-top:0">Recent stock movements</h2>
+<table class="data"><thead><tr><th>When</th><th>Type</th><th class="num">Qty</th><th class="num">Balance</th></tr></thead><tbody>
+{% for m in movements %}<tr><td>{{ m.created_at|date:"Y-m-d H:i" }}</td><td>{{ m.get_movement_type_display }}</td><td class="num">{{ m.quantity|stringformat:"+d" }}</td><td class="num">{{ m.balance_after }}</td></tr>
+{% empty %}<tr><td colspan="4" class="empty">No movements.</td></tr>{% endfor %}</tbody></table></div>
+</div>
+{% endblock %}

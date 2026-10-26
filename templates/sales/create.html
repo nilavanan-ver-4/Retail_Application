@@ -1,0 +1,53 @@
+{% extends "base.html" %}{% load retail static %}
+{% block title %}New sale{% endblock %}
+{% block content %}
+<div class="page-head"><h1>New sale</h1><small class="help no-print">Shortcuts: <span class="kbd">/</span> search · <span class="kbd">Enter</span> add · <span class="kbd">Ctrl</span>+<span class="kbd">Enter</span> save</small></div>
+{% if error %}<div class="msg msg-error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" id="sale-form" novalidate>
+{% csrf_token %}
+<input type="hidden" name="token" value="{{ token }}">
+<div class="builder-grid">
+  <div>
+    <section class="card" aria-labelledby="cust-h"><h2 id="cust-h" style="margin-top:0">Customer</h2>
+      <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 12px">
+        <div class="field"><label for="mobile">Mobile *</label><input id="mobile" data-url="{% url 'sales:customer_lookup' %}" name="mobile" inputmode="tel" autocomplete="off" required value="{{ f.mobile }}"></div>
+        <div class="field"><label for="name">Name *</label><input id="name" name="name" required value="{{ f.name }}"></div>
+        <div class="field"><label for="date">Date</label><input id="date" name="date" type="date" value="{{ f.date }}"></div>
+        <div class="field"><label for="sold_by">Sold by</label><input id="sold_by" name="sold_by" value="{{ f.sold_by }}"></div>
+      </div>
+      <input type="hidden" name="address" id="address" value="{{ f.address }}">
+      <input type="hidden" name="email" id="email" value="{{ f.email }}">
+      <p id="cust-info" class="help" aria-live="polite"></p>
+    </section>
+    <section class="card" aria-labelledby="items-h"><h2 id="items-h" style="margin-top:0">Items</h2>
+      <div class="field" style="position:relative"><label for="product-search">Add product (name, SKU or barcode)</label>
+        <input id="product-search" data-url="{% url 'sales:product_search' %}" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" placeholder="Type to search…">
+        <ul id="search-results" class="search-results" role="listbox" hidden></ul></div>
+      <div class="table-wrap"><table class="data line-table" id="lines"><thead><tr><th>Product</th><th class="num">Qty</th><th class="money">Price</th><th class="money">Discount</th><th class="money">Amount</th><th></th></tr></thead>
+        <tbody></tbody></table></div>
+      <p id="no-lines" class="empty">No items yet. Search above to add products.</p>
+    </section>
+    <section class="card"><div class="field"><label for="terms">Terms / notes</label><textarea id="terms" name="terms" rows="2">{{ f.terms }}</textarea></div></section>
+  </div>
+  <aside>
+    <section class="card totals" aria-labelledby="tot-h"><h2 id="tot-h" style="margin-top:0">Totals</h2>
+      <div class="field"><label for="discount_percent">Invoice discount (%)</label><input id="discount_percent" name="discount_percent" type="number" min="0" max="100" step="0.01" value="{{ f.discount_percent }}"></div>
+      <div class="field"><label for="shipping_charge">Shipping charge</label><input id="shipping_charge" name="shipping_charge" type="number" min="0" step="0.01" value="{{ f.shipping }}"></div>
+      <dl class="kv" aria-live="polite"><dt>Subtotal</dt><dd id="t-sub">0.00</dd><dt>Discount</dt><dd id="t-disc">0.00</dd><dt>{{ BUSINESS.TAX_LABEL }}</dt><dd id="t-tax">0.00</dd><dt>Shipping</dt><dd id="t-ship">0.00</dd></dl>
+      <p class="grand">Total {{ BUSINESS.CURRENCY }} <span id="t-total">0.00</span></p>
+      <p class="help">Preview only. The server recalculates every figure from catalogue prices when you save.</p>
+    </section>
+    <section class="card" aria-labelledby="pay-h"><h2 id="pay-h" style="margin-top:0">Payment</h2>
+      <div id="pay-rows"></div>
+      <button type="button" class="btn small" id="add-pay">＋ Add payment (split)</button>
+      <button type="button" class="btn small" id="pay-full">Pay full amount</button>
+      <dl class="kv" style="margin-top:10px"><dt>Paid now</dt><dd id="t-paid">0.00</dd><dt>Balance due</dt><dd id="t-due">0.00</dd></dl>
+    </section>
+    <button class="btn primary" type="submit" style="width:100%;font-size:1.05rem" id="save-sale">Save invoice</button>
+  </aside>
+</div>
+</form>
+{{ init_json|json_script:"init-data" }}
+{{ methods|json_script:"pay-methods" }}
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/invoice.js' %}" defer></script>{% endblock %}

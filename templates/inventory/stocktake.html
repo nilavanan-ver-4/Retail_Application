@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block title %}{{ st.name }}{% endblock %}
+{% block content %}<div class="page-head"><h1>{{ st.name }} <span class="badge badge-{% if st.status == 'applied' %}ok{% else %}warn{% endif %}">{{ st.get_status_display }}</span></h1></div>
+<form method="post">{% csrf_token %}
+<div class="table-wrap"><table class="data"><thead><tr><th>SKU</th><th>Product</th><th class="num">System qty</th><th class="num">Counted</th><th class="num">Variance</th></tr></thead><tbody>
+{% for l in lines %}<tr><td>{{ l.product.sku }}</td><td>{{ l.product.name }}</td><td class="num">{{ l.system_quantity }}</td>
+<td class="num">{% if st.status == 'draft' %}<input type="number" min="0" name="count_{{ l.pk }}" value="{{ l.counted_quantity|default_if_none:'' }}" aria-label="Counted {{ l.product.name }}" style="width:90px">{% else %}{{ l.counted_quantity|default_if_none:"–" }}{% endif %}</td>
+<td class="num">{{ l.variance|default_if_none:"–" }}</td></tr>{% endfor %}</tbody></table></div>
+{% if st.status == 'draft' and perms.inventory.change_stocktake %}<div class="form-actions" style="margin-top:12px"><button class="btn" type="submit">Save counts</button>
+<button class="btn primary" type="submit" name="apply" value="1" data-confirm="Post stock corrections for every counted line that differs from the system quantity?">Apply corrections</button></div>{% endif %}
+</form>{% endblock %}

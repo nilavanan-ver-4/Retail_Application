@@ -1,0 +1,32 @@
+{% extends "generic/list.html" %}{% load retail %}
+{% block content %}
+<div class="page-head"><h1>Products</h1><div class="actions">{% for a in view.get_actions %}<a class="btn {{ a.kind }}" href="{{ a.url }}">{{ a.label }}</a>{% endfor %}
+{% if perms.products.view_category %}<a class="btn" href="{% url 'products:categories' %}">Categories &amp; brands</a>{% endif %}</div></div>
+<form method="get" class="filters card" role="search">
+  {% for field in filter.form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
+  <div class="field"><button class="btn primary" type="submit">Filter</button> <a class="btn" href="{{ request.path }}">Reset</a></div>
+</form>
+<form method="post" action="{% url 'products:bulk' %}" id="bulk">{% csrf_token %}
+{% if perms.products.change_product %}
+<div class="card filters no-print">
+  <div class="field"><label for="bulk-action">Bulk action on selected</label>
+    <select name="action" id="bulk-action">{% for v, l in bulk_form.fields.action.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+  <div class="field"><label for="bulk-value">Value (category id / % / level)</label><input name="value" id="bulk-value" placeholder="e.g. 5 or -10"></div>
+  <div class="field"><button class="btn" type="submit" data-confirm="Apply this action to all selected products?">Apply</button></div>
+  <small class="help">Category ids: {% for c in categories %}{{ c.pk }}={{ c.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</small>
+</div>{% endif %}
+<div class="table-wrap"><table class="data responsive">
+<caption class="sr">Products</caption>
+<thead><tr>{% if perms.products.change_product %}<th><input type="checkbox" data-select-all=".sel" aria-label="Select all"></th>{% endif %}
+<th>SKU</th><th>Name</th><th>Category</th><th class="money">Price</th>{% if show_cost %}<th class="money">Cost</th><th class="num">Margin</th>{% endif %}<th class="num">Stock</th><th>Status</th></tr></thead>
+<tbody>{% for p in object_list %}<tr>
+{% if perms.products.change_product %}<td><input class="sel" type="checkbox" name="selected" value="{{ p.pk }}" aria-label="Select {{ p.name }}"></td>{% endif %}
+<td data-label="SKU"><a href="{{ p.get_absolute_url }}">{{ p.sku }}</a></td><td data-label="Name">{{ p.name }}</td><td data-label="Category">{{ p.category }}</td>
+<td class="money" data-label="Price">{{ p.selling_price|money }}</td>
+{% if show_cost %}<td class="money" data-label="Cost">{{ p.cost_price|money }}</td><td class="num" data-label="Margin">{{ p.profit_percentage|default_if_none:"–" }}{% if p.profit_percentage is not None %}%{% endif %}</td>{% endif %}
+<td class="num" data-label="Stock">{{ p.stock_on_hand }} {{ p.unit }}</td>
+<td data-label="Status">{% if not p.is_active %}<span class="badge badge-bad">Archived</span>{% elif p.is_out_of_stock %}<span class="badge badge-bad">Out of stock</span>{% elif p.is_low_stock %}<span class="badge badge-warn">Low stock</span>{% else %}<span class="badge badge-ok">In stock</span>{% endif %}</td></tr>
+{% empty %}<tr><td class="empty" colspan="9">No products match.</td></tr>{% endfor %}</tbody></table></div>
+</form>
+{% include "generic/pagination.html" %}
+{% endblock %}

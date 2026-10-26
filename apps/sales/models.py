@@ -88,6 +88,10 @@ class Invoice(TimeStampedModel):
     def __str__(self):
         return f"Invoice {self.number}"
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("sales:detail", args=[self.pk])
+
     @property
     def effective_total(self):
         return self.total - self.returned_total

@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% load retail %}{% block title %}{{ object.number }}{% endblock %}
+{% block content %}<div class="page-head"><h1>{{ object.number }} <span class="badge badge-{{ object.get_status_display|status_kind }}">{{ object.get_status_display }}</span></h1></div>
+<div class="card"><dl class="kv"><dt>Invoice</dt><dd><a href="{{ object.invoice.get_absolute_url }}">{{ object.invoice.number }}</a> ({{ object.invoice.customer_name }})</dd><dt>Date</dt><dd>{{ object.return_date }}</dd><dt>Reason</dt><dd>{{ object.reason }}</dd>
+<dt>Requested by</dt><dd>{{ object.requested_by|default:"–" }}</dd>{% if object.decided_at %}<dt>Decision</dt><dd>{{ object.decided_by }} on {{ object.decided_at|date:"Y-m-d H:i" }} {{ object.decision_note }}</dd>{% endif %}
+<dt>Credit</dt><dd>{{ object.credit_amount|money }}</dd><dt>Refunded</dt><dd>{{ object.refund_amount|money }} {{ object.refund_method }}</dd></dl></div>
+<div class="table-wrap"><table class="data"><thead><tr><th>Product</th><th class="num">Qty</th><th>Condition</th><th class="money">Credit</th></tr></thead><tbody>{% for l in lines %}<tr><td>{{ l.invoice_line.description }}</td><td class="num">{{ l.quantity }}</td><td>{{ l.get_disposition_display }}</td><td class="money">{{ l.credit_amount|money }}</td></tr>{% endfor %}</tbody></table></div>
+{% if object.status == "pending" and perms.returns.approve_return %}<form method="post" class="card form" style="margin-top:14px">{% csrf_token %}
+<h2 style="margin-top:0">Decision</h2>{% if refund_possible %}<p class="help">The customer has paid on this invoice; choose how any refund is paid.</p>{% endif %}
+{% include "generic/form_fields.html" with form=approve_form %}
+<div class="form-actions"><button class="btn primary" type="submit" formaction="{% url 'returns:decide' object.pk 'approve' %}" data-confirm="Approve this return? Stock and balances will change.">Approve &amp; process</button>
+<button class="btn danger" type="submit" formaction="{% url 'returns:decide' object.pk 'reject' %}" data-confirm="Reject this return?">Reject</button></div></form>{% endif %}{% endblock %}

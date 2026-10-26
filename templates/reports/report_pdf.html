@@ -1,0 +1,4 @@
+{% load retail %}<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>{{ title }}</title>
+<style>body{font:11px Arial,sans-serif;color:#111}h1{font-size:18px;margin:0}table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#0b6bdc;color:#fff;text-align:left;padding:4px 6px}td{padding:4px 6px;border-bottom:1px solid #ccc}.money,.num{text-align:right}tfoot td{font-weight:700;border-top:2px solid #111}.help{color:#555}@page{size:A4 landscape;margin:12mm}</style></head>
+<body><h1>{{ BUSINESS.NAME }} — {{ title }}</h1>{% if params %}<p class="help">Period: {{ params.date_from }} to {{ params.date_to }} · generated {% now "Y-m-d H:i" %}</p>{% endif %}
+{% include "reports/_table.html" %}{% for n in report.notes %}<p class="help">Note: {{ n }}</p>{% endfor %}</body></html>

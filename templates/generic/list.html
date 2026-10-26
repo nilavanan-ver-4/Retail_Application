@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load retail %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ title }}</h1>
+  <div class="actions">
+    {% for a in view.get_actions %}<a class="btn {{ a.kind|default:'' }}" href="{{ a.url }}">{{ a.label }}</a>{% endfor %}
+  </div>
+</div>
+{% if filter %}
+<form method="get" class="filters card" role="search">
+  {% for field in filter.form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
+  <div class="field buttons"><button class="btn primary" type="submit">Filter</button>
+  <a class="btn" href="{{ request.path }}">Reset</a></div>
+</form>
+{% endif %}
+{% block summary %}{% endblock %}
+<div class="table-wrap">
+<table class="data">
+  <caption class="sr">{{ title }}</caption>
+  <thead><tr>{% for col in view.get_columns %}<th scope="col" class="{{ col.kind }}">{{ col.label }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for obj in page_obj.object_list|default:object_list %}
+    <tr>{% for col in view.get_columns %}
+      <td class="{{ col.kind }}" data-label="{{ col.label }}">
+        {% with v=obj|getattr_path:col.attr %}
+          {% if col.kind == "money" %}{{ v|money }}
+          {% elif col.kind == "bool" %}{% if v %}✔{% else %}–{% endif %}
+          {% elif col.kind == "status" %}<span class="badge badge-{{ v|status_kind }}">{{ v }}</span>
+          {% elif col.kind == "datetime" %}{{ v|date:"Y-m-d H:i" }}
+          {% elif col.kind == "date" %}{{ v|date:"Y-m-d" }}
+          {% elif col.link %}<a href="{{ obj.get_absolute_url }}">{{ v|default_if_none:"" }}</a>
+          {% else %}{{ v|default_if_none:"" }}{% endif %}
+        {% endwith %}
+      </td>{% endfor %}</tr>
+  {% empty %}
+    <tr><td class="empty" colspan="{{ view.get_columns|length }}">Nothing to show yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% include "generic/pagination.html" %}
+{% endblock %}

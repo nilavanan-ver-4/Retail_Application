@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block title %}Reports{% endblock %}
+{% block content %}<div class="page-head"><h1>Reports</h1></div>
+{% for group, items in groups.items %}<h2>{{ group }}</h2><div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">
+{% for key, title, desc in items %}<a class="stat" href="{% if key == 'audit' %}{% url 'audit:list' %}{% else %}{% url 'reports:report' key %}{% endif %}" style="text-decoration:none;color:inherit"><b style="font-size:1.05rem">{{ title }}</b><span>{{ desc }}</span></a>{% endfor %}</div>{% endfor %}
+{% endblock %}

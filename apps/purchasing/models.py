@@ -31,6 +31,10 @@ class PurchaseOrder(TimeStampedModel):
         ordering = ["-order_date", "-id"]
         indexes = [models.Index(fields=["status", "order_date"])]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("purchasing:order_detail", args=[self.pk])
+
     def __str__(self):
         return self.number
 
@@ -108,6 +112,10 @@ class GoodsReceipt(TimeStampedModel):
         ordering = ["-receipt_date", "-id"]
         permissions = [("receive_goods", "Can confirm goods receipts (increases stock)")]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("purchasing:receipt_detail", args=[self.pk])
+
     def __str__(self):
         return self.number
 
@@ -169,6 +177,10 @@ class SupplierInvoice(TimeStampedModel):
             models.CheckConstraint(condition=models.Q(paid_amount__lte=models.F("total_amount")),
                                    name="sinv_paid_lte_total"),
         ]
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("purchasing:invoice_detail", args=[self.pk])
 
     def __str__(self):
         return self.invoice_number

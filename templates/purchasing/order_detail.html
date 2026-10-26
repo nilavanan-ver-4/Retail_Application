@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% load retail %}{% block title %}{{ object.number }}{% endblock %}
+{% block content %}<div class="page-head"><h1>{{ object.number }} <span class="badge badge-{{ object.get_status_display|status_kind }}">{{ object.get_status_display }}</span></h1>
+<div class="actions">
+{% if perms.purchasing.change_purchaseorder %}
+{% if object.status == "draft" %}<form class="inline" method="post" action="{% url 'purchasing:order_status' object.pk 'place' %}">{% csrf_token %}<button class="btn primary" type="submit">Place order</button></form>{% endif %}
+{% if object.status == "draft" or object.status == "ordered" %}<form class="inline" method="post" action="{% url 'purchasing:order_status' object.pk 'cancel' %}" data-confirm="Cancel this purchase order?">{% csrf_token %}<button class="btn danger" type="submit">Cancel order</button></form>{% endif %}{% endif %}
+{% if perms.purchasing.add_goodsreceipt and object.status == "ordered" or object.status == "partial" %}{% if perms.purchasing.add_goodsreceipt %}<a class="btn primary" href="{% url 'purchasing:receipt_create' %}?po={{ object.pk }}">Receive goods</a>{% endif %}{% endif %}
+</div></div>
+<div class="card"><dl class="kv"><dt>Supplier</dt><dd><a href="{{ object.supplier.get_absolute_url }}">{{ object.supplier }}</a></dd><dt>Order date</dt><dd>{{ object.order_date }}</dd><dt>Expected</dt><dd>{{ object.expected_date|default:"–" }}</dd><dt>Notes</dt><dd>{{ object.notes|default:"–" }}</dd></dl></div>
+<div class="table-wrap"><table class="data"><thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">Received</th><th class="num">Outstanding</th><th class="money">Unit cost</th><th class="money">Line total</th></tr></thead><tbody>
+{% for l in lines %}<tr><td>{{ l.product }}</td><td class="num">{{ l.quantity }}</td><td class="num">{{ l.received_quantity }}</td><td class="num">{{ l.outstanding }}</td><td class="money">{{ l.unit_cost|money }}</td><td class="money">{{ l.line_total|money }}</td></tr>{% endfor %}</tbody>
+<tfoot><tr><td colspan="5" class="money">Discount</td><td class="money">{{ object.discount|money }}</td></tr><tr><td colspan="5" class="money">Total</td><td class="money">{{ object.total|money }}</td></tr></tfoot></table></div>
+<h2>Receipts</h2><ul>{% for r in receipts %}<li><a href="{{ r.get_absolute_url }}">{{ r.number }}</a> — {{ r.get_status_display }}</li>{% empty %}<li>No receipts yet.</li>{% endfor %}</ul>{% endblock %}

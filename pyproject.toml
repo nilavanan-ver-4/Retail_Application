@@ -8,7 +8,7 @@ markers = [
     "e2e: browser tests (need Playwright + chromium)",
     "slow: slower tests",
 ]
-filterwarnings = ["ignore::DeprecationWarning:weasyprint.*"]
+filterwarnings = ["ignore::DeprecationWarning:weasyprint.*", "ignore:No directory at"]
 
 [tool.ruff]
 line-length = 110

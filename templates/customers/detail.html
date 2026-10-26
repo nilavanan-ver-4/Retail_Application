@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% load retail %}{% block title %}{{ object.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ object.name }} {% if not object.is_active %}<span class="badge badge-bad">Inactive</span>{% endif %}</h1>
+<div class="actions">{% if perms.customers.change_customer %}<a class="btn" href="{% url 'customers:update' object.pk %}">Edit</a>{% endif %}
+{% if perms.sales.add_invoice %}<a class="btn primary" href="{% url 'sales:create' %}?customer={{ object.pk }}">New sale</a>{% endif %}</div></div>
+<div class="cards"><div class="stat {% if outstanding > 0 %}warn{% else %}ok{% endif %}"><span>Outstanding balance</span><b>{{ outstanding|money }}</b></div>
+<div class="stat"><span>Credit limit</span><b>{{ object.credit_limit|money }}</b></div></div>
+<div class="grid2"><div class="card"><dl class="kv"><dt>Mobile</dt><dd>{{ object.mobile }}</dd><dt>Email</dt><dd>{{ object.email|default:"–" }}</dd>
+<dt>Billing address</dt><dd>{{ object.billing_address|default:"–"|linebreaksbr }}</dd><dt>Shipping address</dt><dd>{{ object.shipping_address|default:"–"|linebreaksbr }}</dd><dt>Notes</dt><dd>{{ object.notes|default:"–" }}</dd></dl></div>
+<div class="card"><h2 style="margin-top:0">Recent invoices</h2><table class="data"><thead><tr><th>No.</th><th>Date</th><th class="money">Total</th><th>Status</th></tr></thead><tbody>
+{% for i in invoices %}<tr><td><a href="{{ i.get_absolute_url }}">{{ i.number }}</a></td><td>{{ i.date|date:"Y-m-d" }}</td><td class="money">{{ i.total|money }}</td><td><span class="badge badge-{{ i.payment_status|status_kind }}">{{ i.payment_status }}</span></td></tr>{% empty %}<tr><td colspan="4" class="empty">No purchases yet.</td></tr>{% endfor %}</tbody></table></div></div>
+{% if perms.customers.view_ledgerentry %}<h2>Account statement</h2><div class="table-wrap"><table class="data"><thead><tr><th>Date</th><th>Description</th><th>Type</th><th class="money">Amount</th><th class="money">Balance</th></tr></thead><tbody>
+{% for e in ledger %}<tr><td>{{ e.entry_date|date:"Y-m-d H:i" }}</td><td>{{ e.description }}</td><td>{{ e.entry_type }}</td><td class="money">{{ e.amount|money }}</td><td class="money">{{ e.balance|money }}</td></tr>{% empty %}<tr><td colspan="5" class="empty">No entries.</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% endblock %}

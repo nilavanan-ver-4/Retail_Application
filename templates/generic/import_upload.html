@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ title }}</h1></div>
+<form method="post" enctype="multipart/form-data" class="card form" novalidate>{% csrf_token %}
+  {% include "generic/form_fields.html" %}
+  <p class="help">Required columns: <code>{{ required|join:", " }}</code>. Accepted legacy headers:
+  {% for k, v in aliases.items %}<code>{{ k }}</code>→<code>{{ v }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}.
+  You will see a preview before anything is saved.</p>
+  <div class="form-actions"><button class="btn primary" type="submit">Upload &amp; preview</button>
+  <a class="btn" href="{{ back_url }}">Cancel</a></div>
+</form>
+{% endblock %}

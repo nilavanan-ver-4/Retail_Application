@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block title %}{{ title }}{% endblock %}
+{% block content %}<div class="page-head"><h1>{{ title }}</h1></div>
+<form method="post" class="card" novalidate>{% csrf_token %}
+{% if po %}<input type="hidden" name="po" value="{{ po.pk }}">{% endif %}
+<div class="form" style="max-width:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px">{% include "generic/form_fields.html" %}</div>
+<h2>Lines</h2>{{ formset.management_form }}
+<div class="table-wrap"><table class="data line-table"><thead><tr><th>Product</th><th>Quantity</th><th>Unit cost</th><th>Discount</th></tr></thead><tbody>
+{% for f in formset %}<tr>{% for field in f %}<td>{{ field }}{% for e in field.errors %}<small class="error">{{ e }}</small>{% endfor %}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+<div class="form-actions" style="margin-top:14px">
+{% if not receipt and not po and title == "New purchase order" %}<button class="btn primary" type="submit" name="place" value="1">Save &amp; place order</button><button class="btn" type="submit">Save as draft</button>
+{% else %}<button class="btn primary" type="submit">Save</button>{% endif %}
+<a class="btn" href="{{ cancel_url }}">Cancel</a></div></form>{% endblock %}

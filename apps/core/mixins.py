@@ -27,6 +27,22 @@ class FilteredListView(AppPermissionMixin, ListView):
     title = ""
     columns = ()  # (header, attr-or-callable) for the generic table
 
+    actions = ()  # (label, url_name, permission or None, css_kind)
+
+    def get_columns(self):
+        return [{"label": c[0], "attr": c[1], "kind": c[2] if len(c) > 2 else "text",
+                 "link": i == 0 and (len(c) < 4 or c[3] != "nolink")}
+                for i, c in enumerate(self.columns)]
+
+    def get_actions(self):
+        from django.urls import reverse
+        out = []
+        for a in self.actions:
+            label, name, perm = a[0], a[1], a[2] if len(a) > 2 else None
+            if perm is None or self.request.user.has_perm(perm):
+                out.append({"label": label, "url": reverse(name), "kind": a[3] if len(a) > 3 else ""})
+        return out
+
     def get_queryset(self):
         qs = super().get_queryset()
         if self.filterset_class:

@@ -34,6 +34,10 @@ class Customer(TimeStampedModel):
     def __str__(self):
         return f"{self.name} ({self.mobile})"
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("customers:detail", args=[self.pk])
+
 
 class LedgerEntry(models.Model):
     """Customer account statement. DEBIT increases what the customer owes

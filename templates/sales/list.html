@@ -1,0 +1,2 @@
+{% extends "generic/list.html" %}{% load retail %}
+{% block summary %}<div class="cards"><div class="stat"><span>Invoiced (excl. cancelled, filtered)</span><b>{{ totals.total|money }}</b></div><div class="stat ok"><span>Received</span><b>{{ totals.paid|money }}</b></div></div>{% endblock %}

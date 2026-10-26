@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% load retail %}{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ title }}</h1><div class="actions no-print">
+{% if report %}<a class="btn" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}format=csv">CSV</a><a class="btn" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}format=xlsx">Excel</a><a class="btn" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}format=pdf" target="_blank" rel="noopener">PDF</a><button class="btn" type="button" data-print>Print</button>{% endif %}
+<a class="btn" href="{% url 'reports:index' %}">All reports</a></div></div>
+{% if desc %}<p class="help">{{ desc }}</p>{% endif %}
+{% if needs_range %}<form method="get" class="filters card no-print">{% if form.non_field_errors %}<div class="msg msg-error">{{ form.non_field_errors }}</div>{% endif %}
+<div class="field"><label for="id_date_from">From</label>{{ form.date_from }}</div><div class="field"><label for="id_date_to">To</label>{{ form.date_to }}</div>
+{% if show_period %}<div class="field"><label for="id_period">Group by</label>{{ form.period }}</div>{% endif %}
+<div class="field"><button class="btn primary" type="submit">Run report</button></div></form>{% endif %}
+{% if report %}
+{% if params %}<p class="help">Period: {{ params.date_from }} to {{ params.date_to }}</p>{% endif %}
+{% if report.summary %}<div class="cards">{% for label, v in report.summary %}<div class="stat"><span>{{ label }}</span><b>{{ v }}</b></div>{% endfor %}</div>{% endif %}
+{% if report.chart %}<section class="card" aria-label="Chart">{% bar_chart report.chart.0 report.chart.1 title %}</section>{% endif %}
+<div class="table-wrap">{% include "reports/_table.html" %}</div>
+{% for n in report.notes %}<p class="help">ⓘ {{ n }}</p>{% endfor %}
+{% endif %}
+{% endblock %}

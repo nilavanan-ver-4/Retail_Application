@@ -1,0 +1,56 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Retail{% endblock %} · {{ BUSINESS.NAME }}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <link rel="icon" href="{% static 'img/logo.jpg' %}">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+{% if user.is_authenticated %}
+<input type="checkbox" id="nav-toggle" class="nav-toggle" aria-label="Toggle navigation">
+<header class="topbar">
+  <label for="nav-toggle" class="hamburger" aria-hidden="true">☰</label>
+  <a class="brand" href="{% url 'core:dashboard' %}"><img src="{% static 'img/logo.jpg' %}" alt="" width="28" height="28"> {{ BUSINESS.NAME }}</a>
+  <div class="topbar-right">
+    <span class="who">{{ user.display_name }}{% if user.role_names %} <small>({{ user.role_names|join:", " }})</small>{% endif %}</span>
+    <a href="{% url 'accounts:password_change' %}">Password</a>
+    <form method="post" action="{% url 'accounts:logout' %}" class="inline">{% csrf_token %}<button class="linklike" type="submit">Sign out</button></form>
+  </div>
+</header>
+<nav class="sidebar" aria-label="Main">
+  <ul>
+    <li><a href="{% url 'core:dashboard' %}" {% if request.resolver_match.view_name == 'core:dashboard' %}aria-current="page"{% endif %}>Dashboard</a></li>
+    {% if perms.sales.add_invoice %}<li><a class="cta" href="{% url 'sales:create' %}">＋ New sale</a></li>{% endif %}
+    {% if perms.sales.view_invoice %}<li><a href="{% url 'sales:list' %}" {% if request.resolver_match.app_name == 'sales' %}aria-current="page"{% endif %}>Invoices</a></li>{% endif %}
+    {% if perms.payments.view_payment %}<li><a href="{% url 'payments:list' %}" {% if request.resolver_match.app_name == 'payments' %}aria-current="page"{% endif %}>Payments</a></li>{% endif %}
+    {% if perms.returns.view_salesreturn %}<li><a href="{% url 'returns:list' %}" {% if request.resolver_match.app_name == 'returns' %}aria-current="page"{% endif %}>Returns</a></li>{% endif %}
+    {% if perms.customers.view_customer %}<li><a href="{% url 'customers:list' %}" {% if request.resolver_match.app_name == 'customers' %}aria-current="page"{% endif %}>Customers</a></li>{% endif %}
+    <li class="group">Catalogue &amp; stock</li>
+    {% if perms.products.view_product %}<li><a href="{% url 'products:list' %}" {% if request.resolver_match.app_name == 'products' %}aria-current="page"{% endif %}>Products</a></li>{% endif %}
+    {% if perms.inventory.view_stockmovement or perms.products.view_product %}<li><a href="{% url 'inventory:stock' %}" {% if request.resolver_match.app_name == 'inventory' %}aria-current="page"{% endif %}>Inventory</a></li>{% endif %}
+    <li class="group">Purchasing</li>
+    {% if perms.suppliers.view_supplier %}<li><a href="{% url 'suppliers:list' %}" {% if request.resolver_match.app_name == 'suppliers' %}aria-current="page"{% endif %}>Suppliers</a></li>{% endif %}
+    {% if perms.purchasing.view_purchaseorder %}<li><a href="{% url 'purchasing:order_list' %}">Purchase orders</a></li>{% endif %}
+    {% if perms.purchasing.view_goodsreceipt %}<li><a href="{% url 'purchasing:receipt_list' %}">Goods receipts</a></li>{% endif %}
+    {% if perms.purchasing.view_supplierinvoice %}<li><a href="{% url 'purchasing:invoice_list' %}">Supplier invoices</a></li>{% endif %}
+    {% if perms.reports.view_sales_reports or perms.reports.view_inventory_reports or perms.reports.view_financial_reports %}
+    <li class="group">Insights</li>
+    <li><a href="{% url 'reports:index' %}" {% if request.resolver_match.app_name == 'reports' %}aria-current="page"{% endif %}>Reports</a></li>{% endif %}
+    {% if perms.accounts.view_user or perms.audit.view_auditlog %}<li class="group">Administration</li>{% endif %}
+    {% if perms.accounts.view_user %}<li><a href="{% url 'accounts:user_list' %}">Users</a></li>{% endif %}
+    {% if perms.audit.view_auditlog %}<li><a href="{% url 'audit:list' %}">Audit log</a></li>{% endif %}
+  </ul>
+</nav>
+{% endif %}
+<main id="main" class="{% if user.is_authenticated %}with-nav{% endif %}">
+  {% if messages %}<div class="messages" role="status" aria-live="polite">
+    {% for m in messages %}<div class="msg msg-{{ m.level_tag }}">{{ m }}</div>{% endfor %}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+<script src="{% static 'js/app.js' %}" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

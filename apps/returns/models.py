@@ -43,6 +43,10 @@ class SalesReturn(TimeStampedModel):
     def __str__(self):
         return self.number
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("returns:detail", args=[self.pk])
+
 
 class SalesReturnLine(models.Model):
     class Disposition(models.TextChoices):

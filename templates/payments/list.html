@@ -1,0 +1,4 @@
+{% extends "generic/list.html" %}{% load retail %}
+{% block summary %}<div class="cards"><div class="stat ok"><span>Received (filtered)</span><b>{{ received|money }}</b></div>
+{% if perms.payments.view_refund %}<div class="stat warn"><span>Refunded</span><b>{{ refunded|money }}</b></div>{% endif %}
+{% for m, s in by_method %}<div class="stat"><span>{{ m|title }}</span><b>{{ s|money }}</b></div>{% endfor %}</div>{% endblock %}

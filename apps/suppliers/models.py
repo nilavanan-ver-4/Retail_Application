@@ -17,5 +17,9 @@ class Supplier(TimeStampedModel):
         ordering = ["name"]
         indexes = [models.Index(fields=["name"]), models.Index(fields=["company"])]
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("suppliers:detail", args=[self.pk])
+
     def __str__(self):
         return f"{self.name} ({self.company})" if self.company else self.name

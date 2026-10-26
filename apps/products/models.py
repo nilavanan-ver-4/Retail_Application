@@ -109,6 +109,10 @@ class Product(TimeStampedModel):
     def __str__(self):
         return f"{self.sku} - {self.name}"
 
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse("products:detail", args=[self.pk])
+
     def save(self, *args, **kwargs):
         self.sku = self.sku.strip()
         if self.barcode is not None:

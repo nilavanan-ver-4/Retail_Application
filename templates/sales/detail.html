@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% load retail %}{% block title %}Invoice {{ object.number }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Invoice {{ object.number }}
+  <span class="badge badge-{{ object.status|status_kind }}">{{ object.get_status_display }}</span>
+  <span class="badge badge-{{ object.payment_status|status_kind }}">{{ object.payment_status }}</span></h1>
+<div class="actions no-print">
+  <a class="btn" href="{% url 'sales:print' object.pk %}" target="_blank" rel="noopener">Print view</a>
+  <a class="btn" href="{% url 'sales:pdf' object.pk %}" target="_blank" rel="noopener">PDF</a>
+  {% if perms.returns.add_salesreturn and object.status != "Cancelled" and object.status != "Returned" %}<a class="btn" href="{% url 'returns:create' %}?invoice={{ object.pk }}">Return items</a>{% endif %}
+  {% if perms.sales.add_invoice %}<a class="btn" href="{% url 'sales:create' %}?from={{ object.pk }}">Copy as new</a>{% endif %}
+</div></div>
+{% if object.status == "Cancelled" %}<div class="msg msg-error">Cancelled {{ object.cancelled_at|date:"Y-m-d H:i" }} by {{ object.cancelled_by|default:"?" }}: {{ object.cancel_reason }}</div>{% endif %}
+{% if object.is_legacy %}<div class="msg msg-info">Migrated from the legacy system. Costs on these lines are current-cost estimates.</div>{% endif %}
+<div class="cards"><div class="stat"><span>Total</span><b>{{ object.total|money }}</b></div>
+<div class="stat ok"><span>Received (net of refunds)</span><b>{{ object.total_paid|money }}</b></div>
+{% if object.returned_total %}<div class="stat warn"><span>Returned</span><b>{{ object.returned_total|money }}</b></div>{% endif %}
+<div class="stat {% if object.balance_due > 0 %}warn{% else %}ok{% endif %}"><span>Balance due</span><b>{{ object.balance_due|money }}</b></div></div>
+<div class="grid2"><div class="card"><dl class="kv"><dt>Customer</dt><dd>{% if object.customer %}<a href="{{ object.customer.get_absolute_url }}">{{ object.customer_name }}</a>{% else %}{{ object.customer_name }}{% endif %} · {{ object.customer_mobile }}</dd>
+<dt>Date</dt><dd>{{ object.date }}</dd><dt>Sold by</dt><dd>{{ object.sold_by|default:"–" }}</dd><dt>Terms</dt><dd>{{ object.terms|default:"–" }}</dd></dl></div>
+<div class="card"><h2 style="margin-top:0">Payments</h2><table class="data"><thead><tr><th>Date</th><th>Receipt</th><th>Method</th><th class="money">Amount</th><th>Status</th><th></th></tr></thead><tbody>
+{% for p in object.payments.all %}<tr><td>{{ p.paid_on }}</td><td>{{ p.receipt_no|default:"–" }}</td><td>{{ p.get_method_display }}{% if p.kind == "refund" %} <span class="badge badge-warn">refund</span>{% endif %}</td><td class="money">{{ p.amount|money }}</td><td><span class="badge badge-{{ p.get_status_display|status_kind }}">{{ p.get_status_display }}</span></td>
+<td>{% if perms.payments.reverse_payment and p.status == "completed" %}<form class="inline" method="post" action="{% url 'payments:reverse' p.pk %}" data-confirm="Reverse this payment? Enter a reason on the next screen."><button class="btn small" type="submit">Reverse</button>{% csrf_token %}</form>{% endif %}</td></tr>
+{% empty %}<tr><td colspan="6" class="empty">No payments recorded.</td></tr>{% endfor %}</tbody></table>
+{% if can_pay %}<h2>Record payment</h2><form method="post" action="{% url 'payments:create' object.pk %}">{% csrf_token %}{% include "generic/form_fields.html" with form=payment_form %}<button class="btn primary" type="submit">Record payment</button></form>{% endif %}</div></div>
+<h2>Items</h2><div class="table-wrap"><table class="data"><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th>Unit</th><th class="money">Price</th><th class="money">Discount</th><th class="money">Amount</th><th class="money">Tax</th></tr></thead><tbody>
+{% for l in object.lines.all %}<tr><td>{{ forloop.counter }}</td><td>{{ l.description }}</td><td class="num">{{ l.quantity }}</td><td>{{ l.unit }}</td><td class="money">{{ l.unit_price|money:False }}</td><td class="money">{{ l.discount|money:False }}</td><td class="money">{{ l.net_amount|money:False }}</td><td class="money">{{ l.tax_amount|money:False }}</td></tr>{% endfor %}</tbody>
+<tfoot><tr><td colspan="6" class="money">Subtotal</td><td class="money" colspan="2">{{ object.subtotal|money }}</td></tr>
+<tr><td colspan="6" class="money">Invoice discount ({{ object.discount_percent }}%)</td><td class="money" colspan="2">− {{ object.discount_amount|money }}</td></tr>
+<tr><td colspan="6" class="money">{{ BUSINESS.TAX_LABEL }}</td><td class="money" colspan="2">{{ object.tax_total|money }}</td></tr>
+{% if object.shipping_charge %}<tr><td colspan="6" class="money">Shipping</td><td class="money" colspan="2">{{ object.shipping_charge|money }}</td></tr>{% endif %}
+<tr><td colspan="6" class="money">Total</td><td class="money" colspan="2">{{ object.total|money }}</td></tr></tfoot></table></div>
+{% if object.returns.all %}<h2>Returns</h2><ul>{% for r in object.returns.all %}<li><a href="{{ r.get_absolute_url }}">{{ r.number }}</a> — {{ r.get_status_display }} — {{ r.credit_amount|money }}</li>{% endfor %}</ul>{% endif %}
+{% if perms.sales.cancel_invoice and object.is_cancellable %}<details class="card no-print"><summary>Cancel this invoice</summary>
+<form method="post" action="{% url 'sales:cancel' object.pk %}" data-confirm="Cancel this invoice? Stock will be restored.">{% csrf_token %}{% include "generic/form_fields.html" with form=cancel_form %}<button class="btn danger" type="submit">Cancel invoice</button>
+<p class="help">Payments must be reversed or refunded first. Cancelled invoices are kept for the audit trail.</p></form></details>{% endif %}
+{% endblock %}

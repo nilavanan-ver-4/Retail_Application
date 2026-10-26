@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% load retail %}{% block title %}Return items{% endblock %}
+{% block content %}<div class="page-head"><h1>Return items from invoice {{ invoice.number }}</h1></div>
+<form method="post" class="card" novalidate>{% csrf_token %}<input type="hidden" name="invoice" value="{{ invoice.pk }}">
+<div class="table-wrap"><table class="data"><thead><tr><th>Product</th><th class="num">Sold</th><th class="num">Already returned</th><th class="num">Return now</th><th>Condition</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.line.description }}</td><td class="num">{{ r.line.quantity }}</td><td class="num">{{ r.returned }}</td>
+<td class="num">{% if r.available > 0 %}<input type="number" min="0" max="{{ r.available }}" name="qty_{{ r.line.pk }}" value="0" style="width:80px" aria-label="Quantity to return of {{ r.line.description }}">{% else %}–{% endif %}</td>
+<td>{% if r.available > 0 %}<select name="disp_{{ r.line.pk }}" aria-label="Condition">{% for v, l in dispositions %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+<div class="field" style="margin-top:12px"><label for="reason">Reason *</label><input id="reason" name="reason" maxlength="255" required value="{{ posted.reason|default:'' }}"></div>
+<p class="help">The return is sent for approval. Stock and money only change when a manager approves it.</p>
+<div class="form-actions"><button class="btn primary" type="submit">Submit return</button><a class="btn" href="{{ invoice.get_absolute_url }}">Cancel</a></div></form>{% endblock %}

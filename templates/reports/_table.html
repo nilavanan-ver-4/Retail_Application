@@ -1,0 +1,5 @@
+{% load retail %}
+<table class="data"><thead><tr>{% for label, kind in report.columns %}<th class="{{ kind }}">{{ label }}</th>{% endfor %}</tr></thead>
+<tbody>{% for row in report.rows %}<tr>{% for cell in row %}{% with kind=report.columns|get_col_kind:forloop.counter0 %}<td class="{{ kind }}">{% if kind == "money" %}{{ cell|money }}{% elif kind == "date" %}{{ cell|date:"Y-m-d" }}{% elif kind == "status" %}<span class="badge badge-{{ cell|status_kind }}">{{ cell }}</span>{% else %}{{ cell|default_if_none:"" }}{% endif %}</td>{% endwith %}{% endfor %}</tr>
+{% empty %}<tr><td class="empty" colspan="{{ report.columns|length }}">No data for this selection.</td></tr>{% endfor %}</tbody>
+{% if report.totals %}<tfoot><tr>{% for cell in report.totals %}{% with kind=report.columns|get_col_kind:forloop.counter0 %}<td class="{{ kind }}">{% if kind == "money" and cell != "" %}{{ cell|money }}{% else %}{{ cell }}{% endif %}</td>{% endwith %}{% endfor %}</tr></tfoot>{% endif %}</table>

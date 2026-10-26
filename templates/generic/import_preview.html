@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ title }}: {{ job.original_name }}</h1></div>
+<div class="cards">
+  <div class="stat"><span>Rows</span><b>{{ job.summary.total }}</b></div>
+  <div class="stat ok"><span>Create</span><b>{{ job.summary.create|default:0 }}</b></div>
+  <div class="stat ok"><span>Update</span><b>{{ job.summary.update|default:0 }}</b></div>
+  <div class="stat {% if job.summary.errors %}bad{% endif %}"><span>Errors</span><b>{{ job.summary.errors }}</b></div>
+</div>
+<div class="table-wrap"><table class="data">
+  <thead><tr><th>Line</th><th>Action</th><th>Data</th><th>Problems</th></tr></thead>
+  <tbody>{% for r in rows %}
+    <tr class="{% if r.errors %}row-error{% endif %}"><td>{{ r.line }}</td>
+      <td><span class="badge badge-{% if r.errors %}bad{% else %}ok{% endif %}">{{ r.action }}</span></td>
+      <td><small>{% for k, v in r.data.items %}{{ k }}={{ v }}; {% endfor %}</small></td>
+      <td>{% for e in r.errors %}<div class="error">{{ e }}</div>{% endfor %}</td></tr>
+  {% endfor %}</tbody></table></div>
+{% if truncated %}<p class="help">Showing the first 500 rows.</p>{% endif %}
+{% if job.status == "preview" %}
+<form method="post" class="card form">{% csrf_token %}
+  {% if job.summary.errors %}<label class="check"><input type="checkbox" name="skip_invalid"> Skip the {{ job.summary.errors }} invalid row(s) and import only the valid ones</label>{% endif %}
+  <div class="form-actions">
+    <button class="btn primary" type="submit" {% if not job.summary.total %}disabled{% endif %}>Apply import</button>
+    <button class="btn" type="submit" name="cancel" value="1" formnovalidate>Cancel import</button>
+  </div>
+</form>
+{% else %}<p class="msg msg-info">This import is {{ job.get_status_display|lower }}.</p>{% endif %}
+{% endblock %}

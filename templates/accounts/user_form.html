@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block title %}User{% endblock %}
+{% block content %}<div class="page-head"><h1>{% if object %}Edit {{ object.username }}{% else %}New user{% endif %}</h1></div>
+<form method="post" class="card form" novalidate>{% csrf_token %}{% include "generic/form_fields.html" %}
+<div class="form-actions"><button class="btn primary" type="submit">Save</button><a class="btn" href="{% url 'accounts:user_list' %}">Cancel</a></div></form>
+{% endblock %}

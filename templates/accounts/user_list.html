@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block title %}Users{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Users</h1>{% if perms.accounts.add_user %}<a class="btn primary" href="{% url 'accounts:user_create' %}">Add user</a>{% endif %}</div>
+<div class="table-wrap"><table class="data responsive"><thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Roles</th><th>Status</th><th>Last login</th><th></th></tr></thead><tbody>
+{% for u in object_list %}<tr><td data-label="Username">{{ u.username }}</td><td data-label="Name">{{ u.get_full_name }}</td><td data-label="Email">{{ u.email }}</td>
+<td data-label="Roles">{% for g in u.groups.all %}<span class="badge badge-neutral">{{ g.name }}</span> {% endfor %}</td>
+<td data-label="Status">{% if u.is_active %}<span class="badge badge-ok">Active</span>{% else %}<span class="badge badge-bad">Inactive</span>{% endif %}</td>
+<td data-label="Last login">{{ u.last_login|date:"Y-m-d H:i"|default:"never" }}</td>
+<td>{% if perms.accounts.change_user %}<a class="btn small" href="{% url 'accounts:user_update' u.pk %}">Edit</a>
+{% if u.pk != user.pk %}<form class="inline" method="post" action="{% url 'accounts:user_toggle' u.pk %}" data-confirm="{% if u.is_active %}Deactivate{% else %}Activate{% endif %} {{ u.username }}?">{% csrf_token %}<button class="btn small" type="submit">{% if u.is_active %}Deactivate{% else %}Activate{% endif %}</button></form>{% endif %}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% include "generic/pagination.html" %}
+{% endblock %}

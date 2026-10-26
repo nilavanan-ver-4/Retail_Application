@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% load retail %}{% block title %}Inventory{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Inventory</h1><div class="actions">
+{% if perms.inventory.view_stockmovement %}<a class="btn" href="{% url 'inventory:movements' %}">Movements</a><a class="btn" href="{% url 'inventory:reconcile' %}">Reconcile</a>{% endif %}
+{% if perms.inventory.adjust_stock %}<a class="btn primary" href="{% url 'inventory:adjust' %}">Adjust stock</a>{% endif %}
+{% if perms.reports.view_inventory_reports %}<a class="btn" href="{% url 'reports:inventory_valuation' %}">Valuation report</a>{% endif %}</div></div>
+<div class="cards"><div class="stat warn"><span>Low stock</span><b>{{ n_low }}</b></div><div class="stat bad"><span>Out of stock</span><b>{{ n_out }}</b></div>
+{% if show_cost %}<div class="stat"><span>Stock value (at cost)</span><b>{{ valuation|money }}</b></div>{% endif %}</div>
+<form method="get" class="filters card">{% for f in filter.form %}<div class="field"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}</div>{% endfor %}
+<div class="field"><button class="btn primary" type="submit">Filter</button> <a class="btn" href="{{ request.path }}">Reset</a></div></form>
+<div class="table-wrap"><table class="data responsive"><thead><tr><th>SKU</th><th>Product</th><th>Category</th><th class="num">On hand</th><th>Unit</th><th class="num">Reorder at</th><th>Level (1-5)</th><th>Expiry</th><th>Status</th><th></th></tr></thead><tbody>
+{% for p in object_list %}<tr><td data-label="SKU"><a href="{{ p.get_absolute_url }}">{{ p.sku }}</a></td><td data-label="Product">{{ p.name }}</td><td data-label="Category">{{ p.category }}</td>
+<td class="num" data-label="On hand">{{ p.stock_on_hand }}</td><td data-label="Unit">{{ p.unit }}</td><td class="num" data-label="Reorder at">{{ p.reorder_level }}</td><td data-label="Level">{{ p.availability_level }}</td>
+<td data-label="Expiry">{{ p.expiry_date|date:"Y-m-d"|default:"–" }}</td>
+<td data-label="Status">{% if p.is_out_of_stock %}<span class="badge badge-bad">Out of stock</span>{% elif p.is_low_stock %}<span class="badge badge-warn">Low stock</span>{% else %}<span class="badge badge-ok">In stock</span>{% endif %}</td>
+<td>{% if perms.purchasing.receive_goods %}<a class="btn small" href="{% url 'purchasing:quick_receive' p.pk %}">Receive</a>{% endif %}</td></tr>
+{% empty %}<tr><td class="empty" colspan="10">No products match.</td></tr>{% endfor %}</tbody></table></div>
+{% include "generic/pagination.html" %}{% endblock %}

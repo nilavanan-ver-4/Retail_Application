@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% load retail %}{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Dashboard</h1><small class="help">{{ today|date:"l, j F Y" }}</small></div>
+{% if d %}
+<div class="cards">
+  <div class="stat"><span>Sales today</span><b>{{ d.sales_today|money }}</b></div>
+  <div class="stat"><span>Sales last 7 days</span><b>{{ d.sales_week|money }}</b></div>
+  <div class="stat"><span>Sales this month</span><b>{{ d.sales_month|money }}</b></div>
+  <div class="stat"><span>Orders this month</span><b>{{ d.orders_month }}</b></div>
+  <div class="stat"><span>Average order value</span><b>{{ d.avg_order|money }}</b></div>
+  {% if perms.reports.view_financial_reports %}<div class="stat ok"><span>Collected today (net)</span><b>{{ d.collected_today|money }}</b></div>
+  <div class="stat ok"><span>Collected this month</span><b>{{ d.collected_month|money }}</b></div>
+  <div class="stat warn"><span>Outstanding receivables</span><b>{{ d.receivable|money }}</b></div>{% endif %}
+  <div class="stat"><span>Active customers (30 d)</span><b>{{ d.active_customers }}</b></div>
+  <div class="stat {% if d.n_low %}warn{% endif %}"><span>Low stock</span><b>{{ d.n_low }}</b></div>
+  <div class="stat {% if d.n_out %}bad{% endif %}"><span>Out of stock</span><b>{{ d.n_out }}</b></div>
+  {% if d.pending_returns %}<a class="stat warn" href="{% url 'returns:list' %}?status=pending" style="text-decoration:none;color:inherit"><span>Returns awaiting approval</span><b>{{ d.pending_returns }}</b></a>{% endif %}
+</div>
+<div class="grid2">
+  <section class="card"><h2 style="margin-top:0">Sales — last 14 days</h2>{% bar_chart d.trend_labels d.trend_values "Daily sales, last 14 days" %}</section>
+  <section class="card"><h2 style="margin-top:0">Payment methods — this month</h2>{% hbar_list d.methods %}</section>
+  <section class="card"><h2 style="margin-top:0">Top products — 30 days (units)</h2>{% hbar_list d.top_products %}</section>
+  <section class="card"><h2 style="margin-top:0">Top customers — 30 days</h2>{% hbar_list d.top_customers %}</section>
+  <section class="card"><h2 style="margin-top:0">Low stock</h2><table class="data"><tbody>{% for p in d.low_stock %}<tr><td><a href="{{ p.get_absolute_url }}">{{ p.name }}</a></td><td class="num">{{ p.stock_on_hand }} / {{ p.reorder_level }}</td></tr>{% empty %}<tr><td class="empty">Nothing is low on stock.</td></tr>{% endfor %}</tbody></table></section>
+</div>
+{% else %}<div class="card"><p>Welcome, {{ user.display_name }}. Use the menu to get started.</p></div>{% endif %}
+{% endblock %}

@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.generic import TemplateView
 
-from apps.core.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import LoginRequiredMixin
 
 
 def health(request):
@@ -30,3 +30,14 @@ def server_error(request):
 
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = "dashboard.html"
+
+    def get_context_data(self, **kwargs):
+        from django.utils import timezone
+
+        from apps.reports.queries import dashboard_data
+        ctx = super().get_context_data(**kwargs)
+        u = self.request.user
+        ctx["today"] = timezone.localdate()
+        # real database figures; users who cannot see sales/stock get an empty welcome panel
+        ctx["d"] = dashboard_data(ctx["today"]) if (u.has_perm("sales.view_invoice") or u.has_perm("products.view_product")) else None
+        return ctx

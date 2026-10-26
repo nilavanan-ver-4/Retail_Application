@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block title %}Stock takes{% endblock %}
+{% block content %}<div class="page-head"><h1>Stock takes</h1></div>
+{% if perms.inventory.add_stocktake %}<form method="post" class="card filters">{% csrf_token %}{% for f in form %}<div class="field"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}</div>{% endfor %}<div class="field"><button class="btn primary" type="submit">Start new stock take</button></div></form>{% endif %}
+<div class="table-wrap"><table class="data"><thead><tr><th>Name</th><th>Created</th><th>Status</th></tr></thead><tbody>
+{% for s in object_list %}<tr><td><a href="{% url 'inventory:stocktake' s.pk %}">{{ s.name }}</a></td><td>{{ s.created_at|date:"Y-m-d H:i" }}</td><td>{{ s.get_status_display }}</td></tr>{% empty %}<tr><td class="empty" colspan="3">None yet.</td></tr>{% endfor %}</tbody></table></div>{% endblock %}
