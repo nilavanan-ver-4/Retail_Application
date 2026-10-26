@@ -1,0 +1,6 @@
+# Only needed to run the preserved Flask rollback copy in legacy_flask/ and the
+# characterization harness (tests/characterization/legacy_char.py).
+flask
+psycopg2-binary
+pandas
+openpyxl

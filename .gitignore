@@ -332,3 +332,16 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+# --- Django project ---
+.env
+.env.*
+!.env.example
+media/
+staticfiles/
+backups/
+htmlcov/
+.coverage
+.pytest_cache/
+.ruff_cache/
+*.sqlite3
+/tests/e2e/artifacts/
