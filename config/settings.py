@@ -102,6 +102,8 @@ DATABASES["default"].setdefault("OPTIONS", {})
 # by ``manage.py import_legacy``.
 if env("LEGACY_DATABASE_URL", default=""):
     DATABASES["legacy"] = env.db("LEGACY_DATABASE_URL")
+    # defence in depth: the importer can never write to the legacy database
+    DATABASES["legacy"].setdefault("OPTIONS", {})["options"] = "-c default_transaction_read_only=on"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Auth -----------------------------------------------------------------
