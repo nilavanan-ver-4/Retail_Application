@@ -24,11 +24,16 @@ class InvoiceFilter(df.FilterSet):
         fields = ["q", "customer", "status", "payment_status", "date_from", "date_to", "product"]
 
     def search(self, qs, name, value):
-        return qs.filter(Q(number__icontains=value) | Q(customer_name__icontains=value)
-                         | Q(customer_mobile__icontains=value))
+        return qs.filter(
+            Q(number__icontains=value)
+            | Q(customer_name__icontains=value)
+            | Q(customer_mobile__icontains=value)
+        )
 
     def by_product(self, qs, name, value):
-        return qs.filter(Q(lines__description__icontains=value) | Q(lines__product__sku__icontains=value)).distinct()
+        return qs.filter(
+            Q(lines__description__icontains=value) | Q(lines__product__sku__icontains=value)
+        ).distinct()
 
 
 class CancelForm(forms.Form):
@@ -39,6 +44,9 @@ class PaymentForm(forms.Form):
     amount = forms.DecimalField(min_value=0.01, max_digits=12, decimal_places=2)
     method = forms.ChoiceField(choices=Payment.Method.choices)
     paid_on = forms.DateField(widget=date_widget)
-    reference = forms.CharField(max_length=100, required=False,
-                                help_text="Terminal slip / bank reference / UPI transaction id. Never enter card numbers.")
+    reference = forms.CharField(
+        max_length=100,
+        required=False,
+        help_text="Terminal slip / bank reference / UPI transaction id. Never enter card numbers.",
+    )
     token = forms.CharField(widget=forms.HiddenInput, required=False)

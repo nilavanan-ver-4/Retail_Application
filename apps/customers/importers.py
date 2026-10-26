@@ -19,14 +19,21 @@ class CustomerImporter(BaseImporter):
         mobile = (row.get("mobile") or "").strip().replace(" ", "")
         if mobile.endswith(".0"):
             mobile = mobile[:-2]  # Excel stores numbers as floats
-        data = {"name": (row.get("name") or "").strip(), "mobile": mobile,
-                "email": (row.get("email") or "").strip(),
-                "billing_address": (row.get("billing_address") or "").strip()}
+        data = {
+            "name": (row.get("name") or "").strip(),
+            "mobile": mobile,
+            "email": (row.get("email") or "").strip(),
+            "billing_address": (row.get("billing_address") or "").strip(),
+        }
         form = CustomerForm(data={**data, "is_active": True})
         errors = []
         if not form.is_valid():
-            errors = [f"{f}: {e}" for f, es in form.errors.items() for e in es
-                      if not (f == "mobile" and "already exists" in e)]
+            errors = [
+                f"{f}: {e}"
+                for f, es in form.errors.items()
+                for e in es
+                if not (f == "mobile" and "already exists" in e)
+            ]
         if mobile in ctx["mobiles"]:
             errors.append(f"Customer with mobile {mobile} already exists.")
         return data, errors, "create"

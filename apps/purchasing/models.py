@@ -15,16 +15,17 @@ class PurchaseOrder(TimeStampedModel):
         CANCELLED = "cancelled", "Cancelled"
 
     number = models.CharField(max_length=30, unique=True)
-    supplier = models.ForeignKey("suppliers.Supplier", on_delete=models.PROTECT,
-                                 related_name="purchase_orders")
+    supplier = models.ForeignKey(
+        "suppliers.Supplier", on_delete=models.PROTECT, related_name="purchase_orders"
+    )
     order_date = models.DateField()
     expected_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
-    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"),
-                                   validators=[MinValueValidator(Decimal("0"))])
+    discount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00"), validators=[MinValueValidator(Decimal("0"))]
+    )
     notes = models.TextField(blank=True)
-    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL,
-                                   related_name="+")
+    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         db_table = "purchasing_purchaseorder"
@@ -33,6 +34,7 @@ class PurchaseOrder(TimeStampedModel):
 
     def get_absolute_url(self):
         from django.urls import reverse
+
         return reverse("purchasing:order_detail", args=[self.pk])
 
     def __str__(self):
@@ -56,18 +58,22 @@ class PurchaseOrderLine(models.Model):
     product = models.ForeignKey("products.Product", on_delete=models.PROTECT, related_name="+")
     quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     received_quantity = models.PositiveIntegerField(default=0, editable=False)
-    unit_cost = models.DecimalField(max_digits=12, decimal_places=2,
-                                    validators=[MinValueValidator(Decimal("0"))])
-    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"),
-                                   validators=[MinValueValidator(Decimal("0"))])
+    unit_cost = models.DecimalField(
+        max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0"))]
+    )
+    discount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00"), validators=[MinValueValidator(Decimal("0"))]
+    )
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
 
     class Meta:
         db_table = "purchasing_purchaseorderline"
         constraints = [
             models.CheckConstraint(condition=models.Q(quantity__gte=1), name="pol_quantity_gte_1"),
-            models.CheckConstraint(condition=models.Q(received_quantity__lte=models.F("quantity")),
-                                   name="pol_received_lte_ordered"),
+            models.CheckConstraint(
+                condition=models.Q(received_quantity__lte=models.F("quantity")),
+                name="pol_received_lte_ordered",
+            ),
         ]
 
     @property
@@ -92,19 +98,19 @@ class GoodsReceipt(TimeStampedModel):
         CONFIRMED = "confirmed", "Confirmed"
 
     number = models.CharField(max_length=30, unique=True)
-    supplier = models.ForeignKey("suppliers.Supplier", on_delete=models.PROTECT,
-                                 related_name="receipts")
-    purchase_order = models.ForeignKey(PurchaseOrder, null=True, blank=True,
-                                       on_delete=models.PROTECT, related_name="receipts")
+    supplier = models.ForeignKey("suppliers.Supplier", on_delete=models.PROTECT, related_name="receipts")
+    purchase_order = models.ForeignKey(
+        PurchaseOrder, null=True, blank=True, on_delete=models.PROTECT, related_name="receipts"
+    )
     receipt_date = models.DateField()
     delivery_note = models.CharField("Supplier delivery note / reference", max_length=100, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
     confirmed_at = models.DateTimeField(null=True, blank=True)
-    confirmed_by = models.ForeignKey("accounts.User", null=True, blank=True,
-                                     on_delete=models.SET_NULL, related_name="+")
+    confirmed_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     comments = models.TextField(blank=True)
-    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL,
-                                   related_name="+")
+    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL, related_name="+")
     legacy_item_id = models.IntegerField(null=True, blank=True, unique=True, editable=False)
 
     class Meta:
@@ -114,6 +120,7 @@ class GoodsReceipt(TimeStampedModel):
 
     def get_absolute_url(self):
         from django.urls import reverse
+
         return reverse("purchasing:receipt_detail", args=[self.pk])
 
     def __str__(self):
@@ -123,16 +130,17 @@ class GoodsReceipt(TimeStampedModel):
 class GoodsReceiptLine(models.Model):
     receipt = models.ForeignKey(GoodsReceipt, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey("products.Product", on_delete=models.PROTECT, related_name="+")
-    po_line = models.ForeignKey(PurchaseOrderLine, null=True, blank=True, on_delete=models.PROTECT,
-                                related_name="receipt_lines")
+    po_line = models.ForeignKey(
+        PurchaseOrderLine, null=True, blank=True, on_delete=models.PROTECT, related_name="receipt_lines"
+    )
     quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
-    unit_cost = models.DecimalField(max_digits=12, decimal_places=2,
-                                    validators=[MinValueValidator(Decimal("0"))])
+    unit_cost = models.DecimalField(
+        max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0"))]
+    )
 
     class Meta:
         db_table = "purchasing_goodsreceiptline"
-        constraints = [models.CheckConstraint(condition=models.Q(quantity__gte=1),
-                                              name="grl_quantity_gte_1")]
+        constraints = [models.CheckConstraint(condition=models.Q(quantity__gte=1), name="grl_quantity_gte_1")]
 
 
 class SupplierInvoice(TimeStampedModel):
@@ -149,24 +157,27 @@ class SupplierInvoice(TimeStampedModel):
         PAID = "Paid", "Paid"
 
     invoice_number = models.CharField(max_length=50, unique=True)
-    supplier = models.ForeignKey("suppliers.Supplier", on_delete=models.PROTECT,
-                                 related_name="invoices")
-    purchase_order = models.ForeignKey(PurchaseOrder, null=True, blank=True,
-                                       on_delete=models.PROTECT, related_name="invoices")
-    receipt = models.ForeignKey(GoodsReceipt, null=True, blank=True, on_delete=models.PROTECT,
-                                related_name="invoices")
+    supplier = models.ForeignKey("suppliers.Supplier", on_delete=models.PROTECT, related_name="invoices")
+    purchase_order = models.ForeignKey(
+        PurchaseOrder, null=True, blank=True, on_delete=models.PROTECT, related_name="invoices"
+    )
+    receipt = models.ForeignKey(
+        GoodsReceipt, null=True, blank=True, on_delete=models.PROTECT, related_name="invoices"
+    )
     invoice_date = models.DateField()
     due_date = models.DateField(null=True, blank=True)
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2,
-                                       validators=[MinValueValidator(Decimal("0"))])
-    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"),
-                                      editable=False)
+    total_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0"))]
+    )
+    paid_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00"), editable=False
+    )
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
-    payment_status = models.CharField(max_length=16, choices=PaymentStatus.choices,
-                                      default=PaymentStatus.UNPAID)
+    payment_status = models.CharField(
+        max_length=16, choices=PaymentStatus.choices, default=PaymentStatus.UNPAID
+    )
     notes = models.TextField(blank=True)
-    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL,
-                                   related_name="+")
+    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         db_table = "purchasing_supplierinvoice"
@@ -174,12 +185,14 @@ class SupplierInvoice(TimeStampedModel):
         indexes = [models.Index(fields=["payment_status"]), models.Index(fields=["supplier"])]
         constraints = [
             models.CheckConstraint(condition=models.Q(paid_amount__gte=0), name="sinv_paid_gte_0"),
-            models.CheckConstraint(condition=models.Q(paid_amount__lte=models.F("total_amount")),
-                                   name="sinv_paid_lte_total"),
+            models.CheckConstraint(
+                condition=models.Q(paid_amount__lte=models.F("total_amount")), name="sinv_paid_lte_total"
+            ),
         ]
 
     def get_absolute_url(self):
         from django.urls import reverse
+
         return reverse("purchasing:invoice_detail", args=[self.pk])
 
     def __str__(self):
@@ -209,17 +222,16 @@ class SupplierPayment(TimeStampedModel):
         OTHER = "other", "Other"
 
     invoice = models.ForeignKey(SupplierInvoice, on_delete=models.PROTECT, related_name="payments")
-    amount = models.DecimalField(max_digits=12, decimal_places=2,
-                                 validators=[MinValueValidator(Decimal("0.01"))])
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))]
+    )
     method = models.CharField(max_length=20, choices=Method.choices)
     reference = models.CharField(max_length=100, blank=True)
     paid_on = models.DateField()
     idempotency_key = models.CharField(max_length=64, unique=True, null=True, blank=True)
-    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL,
-                                   related_name="+")
+    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         db_table = "purchasing_supplierpayment"
         ordering = ["-paid_on", "-id"]
-        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0),
-                                              name="spay_amount_gt_0")]
+        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name="spay_amount_gt_0")]

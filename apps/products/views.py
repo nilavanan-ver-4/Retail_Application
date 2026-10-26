@@ -2,7 +2,6 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
@@ -51,7 +50,13 @@ class ProductListView(FilteredListView):
         if u.has_perm("products.import_products"):
             acts.append({"label": "Import", "url": reverse("products:import"), "kind": ""})
         if u.has_perm("products.export_products"):
-            acts.append({"label": "Export CSV", "url": reverse("products:export") + "?" + self.request.GET.urlencode(), "kind": ""})
+            acts.append(
+                {
+                    "label": "Export CSV",
+                    "url": reverse("products:export") + "?" + self.request.GET.urlencode(),
+                    "kind": "",
+                }
+            )
         return acts
 
 
@@ -87,8 +92,14 @@ class ProductCreateView(ProductFormMixin, AppPermissionMixin, CreateView):
         product.save()
         opening = form.cleaned_data.get("opening_stock") or 0
         if opening:
-            apply_movement(product.pk, StockMovement.Type.OPENING, opening, user=self.request.user,
-                           note="Opening stock at product creation", unit_cost=product.cost_price)
+            apply_movement(
+                product.pk,
+                StockMovement.Type.OPENING,
+                opening,
+                user=self.request.user,
+                note="Opening stock at product creation",
+                unit_cost=product.cost_price,
+            )
         audit_log("product.created", product, price=str(product.selling_price))
         messages.success(self.request, f"Product {product.name} created.")
         self.object = product
@@ -102,6 +113,7 @@ class ProductUpdateView(ProductFormMixin, AppPermissionMixin, UpdateView):
         before = {f: getattr(Product.objects.get(pk=self.object.pk), f) for f in PRICE_FIELDS}
         with transaction.atomic():
             product = form.save()
+            product.refresh_from_db()  # normalised Decimal values, as stored
             after = {f: getattr(product, f) for f in PRICE_FIELDS}
             changed = {f: [str(before[f]), str(after[f])] for f in PRICE_FIELDS if before[f] != after[f]}
             if changed:
@@ -118,8 +130,9 @@ class ProductArchiveView(AppPermissionMixin, View):
         p = get_object_or_404(Product, pk=pk)
         p.restore() if self.restore else p.archive()
         audit_log("product.restored" if self.restore else "product.archived", p)
-        messages.success(request, f"{p.name} {'restored' if self.restore else 'archived'}. "
-                                  "Sales history is kept.")
+        messages.success(
+            request, f"{p.name} {'restored' if self.restore else 'archived'}. Sales history is kept."
+        )
         return redirect(p.get_absolute_url())
 
 
@@ -143,8 +156,14 @@ class ProductBulkView(AppPermissionMixin, View):
                 transaction.set_rollback(True)
                 messages.error(request, f"Bulk update failed: {exc or 'invalid value'}. Nothing was changed.")
                 return redirect("products:list")
-            audit_log("product.bulk_update", None, summary=f"{action} on {len(products)} products",
-                      action=action, value=value, ids=[p.pk for p in products])
+            audit_log(
+                "product.bulk_update",
+                None,
+                summary=f"{action} on {len(products)} products",
+                bulk_action=action,
+                value=value,
+                ids=[p.pk for p in products],
+            )
         messages.success(request, f"Updated {len(products)} product(s).")
         return redirect("products:list")
 
@@ -182,17 +201,42 @@ class ProductExportView(AppPermissionMixin, View):
     permission_required = "products.export_products"
 
     def get(self, request):
-        qs = ProductFilter(request.GET or None, queryset=Product.objects.select_related("category", "brand", "supplier")).qs
+        qs = ProductFilter(
+            request.GET or None, queryset=Product.objects.select_related("category", "brand", "supplier")
+        ).qs
         show_cost = request.user.has_perm("products.view_cost_price")
-        header = ["sku", "name", "category", "brand", "barcode", "unit", "selling_price", "tax_rate",
-                  "stock_on_hand", "reorder_level", "expiry_date", "active"]
+        header = [
+            "sku",
+            "name",
+            "category",
+            "brand",
+            "barcode",
+            "unit",
+            "selling_price",
+            "tax_rate",
+            "stock_on_hand",
+            "reorder_level",
+            "expiry_date",
+            "active",
+        ]
         if show_cost:
             header.insert(6, "cost_price")
         rows = []
         for p in qs.iterator():
-            row = [p.sku, p.name, p.category.name, p.brand.name if p.brand else "", p.barcode or "", p.unit,
-                   p.selling_price, p.tax_rate, p.stock_on_hand, p.reorder_level,
-                   p.expiry_date or "", "yes" if p.is_active else "no"]
+            row = [
+                p.sku,
+                p.name,
+                p.category.name,
+                p.brand.name if p.brand else "",
+                p.barcode or "",
+                p.unit,
+                p.selling_price,
+                p.tax_rate,
+                p.stock_on_hand,
+                p.reorder_level,
+                p.expiry_date or "",
+                "yes" if p.is_active else "no",
+            ]
             if show_cost:
                 row.insert(6, p.cost_price)
             rows.append(row)
@@ -217,6 +261,7 @@ class ProductImportPreviewView(ImportPreviewView):
 
 class ProductSearchView(AppPermissionMixin, View):
     """JSON lookup used by the billing screen. Never exposes cost prices."""
+
     permission_required = "products.view_product"
 
     def get(self, request):
@@ -224,13 +269,26 @@ class ProductSearchView(AppPermissionMixin, View):
         qs = Product.objects.filter(is_active=True)
         if q:
             from django.db.models import Q
+
             qs = qs.filter(Q(name__icontains=q) | Q(sku__icontains=q) | Q(barcode=q))
         else:
             qs = qs.none()
-        return JsonResponse({"products": [
-            {"id": p.pk, "sku": p.sku, "name": p.name, "price": str(p.selling_price),
-             "tax_rate": str(p.tax_rate), "stock": p.stock_on_hand, "unit": p.unit}
-            for p in qs.order_by("name")[:12]]})
+        return JsonResponse(
+            {
+                "products": [
+                    {
+                        "id": p.pk,
+                        "sku": p.sku,
+                        "name": p.name,
+                        "price": str(p.selling_price),
+                        "tax_rate": str(p.tax_rate),
+                        "stock": p.stock_on_hand,
+                        "unit": p.unit,
+                    }
+                    for p in qs.order_by("name")[:12]
+                ]
+            }
+        )
 
 
 class CategoryListView(AppPermissionMixin, ListView):
@@ -248,6 +306,7 @@ class CategoryListView(AppPermissionMixin, ListView):
     def post(self, request):
         if not request.user.has_perm("products.add_category"):
             from django.core.exceptions import PermissionDenied
+
             raise PermissionDenied
         which = request.POST.get("which")
         form = BrandForm(request.POST, prefix="brand") if which == "brand" else CategoryForm(request.POST)

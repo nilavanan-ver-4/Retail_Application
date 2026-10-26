@@ -4,13 +4,18 @@ import pytest
 from django.contrib.auth.models import Group
 
 from apps.accounts.models import User
-from apps.accounts.roles import (ADMINISTRATOR, CASHIER, INVENTORY, MANAGER, PURCHASING, REPORTING,
-                                 sync_roles)
+from apps.accounts.roles import ADMINISTRATOR, CASHIER, INVENTORY, MANAGER, PURCHASING, REPORTING, sync_roles
 from apps.customers.models import Customer
 from apps.inventory.models import StockMovement
 from apps.inventory.services import apply_movement
 from apps.products.models import Category, Product
 from apps.suppliers.models import Supplier
+
+
+@pytest.fixture(autouse=True)
+def _fast_hashing(settings):
+    # production uses PBKDF2; tests use a fast hasher purely for speed
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 
 @pytest.fixture(autouse=True)
@@ -60,13 +65,15 @@ def client_as(client):
     def _login(user):
         client.force_login(user)
         return client
+
     return _login
 
 
 @pytest.fixture
 def supplier(db):
-    return Supplier.objects.create(name="ABC", company="ABC Pvt", mobile="9876543210",
-                                   email="a@x.com", terms="Net 30")
+    return Supplier.objects.create(
+        name="ABC", company="ABC Pvt", mobile="9876543210", email="a@x.com", terms="Net 30"
+    )
 
 
 @pytest.fixture
@@ -78,17 +85,25 @@ def category(db):
 def make_product(db, category, supplier):
     counter = {"n": 0}
 
-    def _make(name="Apple", price="70.00", cost="50.00", stock=100, tax="0.00", sku=None,
-              reorder=20, **kw):
+    def _make(name="Apple", price="70.00", cost="50.00", stock=100, tax="0.00", sku=None, reorder=20, **kw):
         counter["n"] += 1
         p = Product.objects.create(
-            sku=sku or f"SKU{counter['n']:04d}", name=name, category=category, supplier=supplier,
-            unit="kg", cost_price=Decimal(cost), selling_price=Decimal(price),
-            tax_rate=Decimal(tax), reorder_level=reorder, **kw)
+            sku=sku or f"SKU{counter['n']:04d}",
+            name=name,
+            category=category,
+            supplier=supplier,
+            unit="kg",
+            cost_price=Decimal(cost),
+            selling_price=Decimal(price),
+            tax_rate=Decimal(tax),
+            reorder_level=reorder,
+            **kw,
+        )
         if stock:
             apply_movement(p.pk, StockMovement.Type.OPENING, stock)
             p.refresh_from_db()
         return p
+
     return _make
 
 

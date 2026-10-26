@@ -30,10 +30,18 @@ class SupplierListView(FilteredListView):
     model = Supplier
     filterset_class = SupplierFilter
     title = "Suppliers"
-    columns = (("Name", "name"), ("Company", "company", "text", "nolink"), ("Mobile", "mobile"),
-               ("Email", "email"), ("Terms", "terms"), ("Active", "is_active", "bool"))
-    actions = (("Add supplier", "suppliers:create", "suppliers.add_supplier", "primary"),
-               ("Import", "suppliers:import", "suppliers.add_supplier"))
+    columns = (
+        ("Name", "name"),
+        ("Company", "company", "text", "nolink"),
+        ("Mobile", "mobile"),
+        ("Email", "email"),
+        ("Terms", "terms"),
+        ("Active", "is_active", "bool"),
+    )
+    actions = (
+        ("Add supplier", "suppliers:create", "suppliers.add_supplier", "primary"),
+        ("Import", "suppliers:import", "suppliers.add_supplier"),
+    )
 
 
 class SupplierDetailView(AppPermissionMixin, DetailView):
@@ -44,8 +52,9 @@ class SupplierDetailView(AppPermissionMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         s = self.object
-        ctx["payable"] = (s.invoices.exclude(status="Cancelled")
-                          .aggregate(t=Sum("total_amount"), p=Sum("paid_amount")))
+        ctx["payable"] = s.invoices.exclude(status="Cancelled").aggregate(
+            t=Sum("total_amount"), p=Sum("paid_amount")
+        )
         ctx["payable"] = (ctx["payable"]["t"] or ZERO) - (ctx["payable"]["p"] or ZERO)
         ctx["invoices"] = s.invoices.all()[:15]
         ctx["orders"] = s.purchase_orders.all()[:15]

@@ -26,7 +26,11 @@ class Command(BaseCommand):
             self.stdout.write("Administrator already exists; nothing to do.")
             return
         user = User.objects.create_user(
-            username=username, password=password,
-            email=os.environ.get("BOOTSTRAP_ADMIN_EMAIL", ""), is_staff=True, is_superuser=True)
+            username=username,
+            password=password,
+            email=os.environ.get("BOOTSTRAP_ADMIN_EMAIL", ""),
+            is_staff=True,
+            is_superuser=True,
+        )
         user.groups.add(Group.objects.get(name="Administrator"))
         self.stdout.write(self.style.SUCCESS(f"Administrator '{username}' created."))

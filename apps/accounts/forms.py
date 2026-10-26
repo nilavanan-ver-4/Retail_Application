@@ -6,14 +6,16 @@ from .models import User
 
 
 class LoginForm(AuthenticationForm):
-    username = forms.CharField(widget=forms.TextInput(attrs={"autofocus": True,
-                                                            "autocomplete": "username"}))
+    username = forms.CharField(widget=forms.TextInput(attrs={"autofocus": True, "autocomplete": "username"}))
 
 
 class RoleMixin(forms.Form):
     roles = forms.ModelMultipleChoiceField(
-        queryset=Group.objects.order_by("name"), required=False,
-        widget=forms.CheckboxSelectMultiple, help_text="Roles control what this user can do.")
+        queryset=Group.objects.order_by("name"),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Roles control what this user can do.",
+    )
 
 
 class UserCreateForm(UserCreationForm, RoleMixin):

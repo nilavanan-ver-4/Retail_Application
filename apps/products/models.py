@@ -49,30 +49,38 @@ class Product(TimeStampedModel):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="products")
-    brand = models.ForeignKey(Brand, null=True, blank=True, on_delete=models.PROTECT,
-                              related_name="products")
+    brand = models.ForeignKey(Brand, null=True, blank=True, on_delete=models.PROTECT, related_name="products")
     barcode = models.CharField(max_length=64, blank=True, null=True)
-    image = models.ImageField(upload_to="products/%Y/%m/", blank=True,
-                              validators=[validate_image_upload,
-                                          FileExtensionValidator(["jpg", "jpeg", "png", "webp"])])
+    image = models.ImageField(
+        upload_to="products/%Y/%m/",
+        blank=True,
+        validators=[validate_image_upload, FileExtensionValidator(["jpg", "jpeg", "png", "webp"])],
+    )
     unit = models.CharField(max_length=50, default="pcs")
     hs_code = models.CharField("HS code", max_length=50, blank=True)
-    supplier = models.ForeignKey("suppliers.Supplier", null=True, blank=True,
-                                 on_delete=models.SET_NULL, related_name="products")
+    supplier = models.ForeignKey(
+        "suppliers.Supplier", null=True, blank=True, on_delete=models.SET_NULL, related_name="products"
+    )
     supplier_terms = models.TextField(blank=True)
 
-    cost_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"),
-                                     validators=[MinValueValidator(Decimal("0"))])
-    selling_price = models.DecimalField(max_digits=12, decimal_places=2,
-                                        validators=[MinValueValidator(Decimal("0"))])
+    cost_price = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00"), validators=[MinValueValidator(Decimal("0"))]
+    )
+    selling_price = models.DecimalField(
+        max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0"))]
+    )
     tax_rate = models.DecimalField(
-        max_digits=5, decimal_places=2, default=Decimal("0.00"),
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
         validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
-        help_text="Percent, from a verified tax rule. 0 means untaxed.")
+        help_text="Percent, from a verified tax rule. 0 means untaxed.",
+    )
 
     stock_on_hand = models.IntegerField(default=0, editable=False)
     reorder_level = models.PositiveIntegerField(
-        default=0, help_text="Legacy 'safety level'. Low-stock alerts trigger at or below this.")
+        default=0, help_text="Legacy 'safety level'. Low-stock alerts trigger at or below this."
+    )
     allow_negative_stock = models.BooleanField(default=False)
     expiry_date = models.DateField(null=True, blank=True)
 
@@ -89,16 +97,20 @@ class Product(TimeStampedModel):
         ]
         constraints = [
             models.UniqueConstraint(Lower("sku"), name="uniq_product_sku_ci"),
-            models.UniqueConstraint(fields=["barcode"], condition=models.Q(barcode__isnull=False)
-                                    & ~models.Q(barcode=""), name="uniq_product_barcode"),
+            models.UniqueConstraint(
+                fields=["barcode"],
+                condition=models.Q(barcode__isnull=False) & ~models.Q(barcode=""),
+                name="uniq_product_barcode",
+            ),
             models.CheckConstraint(condition=models.Q(cost_price__gte=0), name="product_cost_gte_0"),
-            models.CheckConstraint(condition=models.Q(selling_price__gte=0),
-                                   name="product_price_gte_0"),
-            models.CheckConstraint(condition=models.Q(tax_rate__gte=0) & models.Q(tax_rate__lte=100),
-                                   name="product_tax_0_100"),
+            models.CheckConstraint(condition=models.Q(selling_price__gte=0), name="product_price_gte_0"),
+            models.CheckConstraint(
+                condition=models.Q(tax_rate__gte=0) & models.Q(tax_rate__lte=100), name="product_tax_0_100"
+            ),
             models.CheckConstraint(
                 condition=models.Q(stock_on_hand__gte=0) | models.Q(allow_negative_stock=True),
-                name="product_stock_non_negative"),
+                name="product_stock_non_negative",
+            ),
         ]
         indexes = [
             models.Index(fields=["name"]),
@@ -111,6 +123,7 @@ class Product(TimeStampedModel):
 
     def get_absolute_url(self):
         from django.urls import reverse
+
         return reverse("products:detail", args=[self.pk])
 
     def save(self, *args, **kwargs):
@@ -140,8 +153,9 @@ class Product(TimeStampedModel):
         """Legacy 1-5 availability scale (replicates DB trigger
         ``update_inventory_availability_scale``): ratio of stock to safety level."""
         # safety level 0 -> ratio forced to 1.0 (legacy avoids division by zero)
-        ratio = (Decimal(self.stock_on_hand) / Decimal(self.reorder_level)
-                 if self.reorder_level else Decimal(1))
+        ratio = (
+            Decimal(self.stock_on_hand) / Decimal(self.reorder_level) if self.reorder_level else Decimal(1)
+        )
         if ratio >= 1:
             return 5
         if ratio >= Decimal("0.85"):

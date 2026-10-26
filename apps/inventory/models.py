@@ -20,8 +20,7 @@ class StockMovement(models.Model):
         COUNT = "count", "Stock-take correction"
         IMPORT = "import", "Import"
 
-    product = models.ForeignKey("products.Product", on_delete=models.PROTECT,
-                                related_name="movements")
+    product = models.ForeignKey("products.Product", on_delete=models.PROTECT, related_name="movements")
     movement_type = models.CharField(max_length=20, choices=Type.choices)
     quantity = models.IntegerField()
     balance_after = models.IntegerField()
@@ -29,18 +28,22 @@ class StockMovement(models.Model):
     reference_type = models.CharField(max_length=40, blank=True)
     reference_id = models.CharField(max_length=40, blank=True)
     note = models.CharField(max_length=255, blank=True)
-    created_by = models.ForeignKey("accounts.User", null=True, blank=True,
-                                   on_delete=models.SET_NULL, related_name="+")
+    created_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     created_at = models.DateTimeField(db_index=True)
 
     class Meta:
         db_table = "inventory_stockmovement"
         ordering = ["-created_at", "-id"]
         permissions = [("adjust_stock", "Can make manual stock adjustments and write-offs")]
-        indexes = [models.Index(fields=["product", "created_at"]),
-                   models.Index(fields=["reference_type", "reference_id"])]
-        constraints = [models.CheckConstraint(condition=~models.Q(quantity=0),
-                                              name="movement_quantity_nonzero")]
+        indexes = [
+            models.Index(fields=["product", "created_at"]),
+            models.Index(fields=["reference_type", "reference_id"]),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=~models.Q(quantity=0), name="movement_quantity_nonzero")
+        ]
 
     def save(self, *args, **kwargs):
         if self.pk:
@@ -61,8 +64,7 @@ class StockTake(TimeStampedModel):
 
     name = models.CharField(max_length=120)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
-    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL,
-                                   related_name="+")
+    created_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL, related_name="+")
     applied_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -85,7 +87,8 @@ class StockTakeLine(models.Model):
             models.UniqueConstraint(fields=["stocktake", "product"], name="uniq_stocktake_product"),
             models.CheckConstraint(
                 condition=models.Q(counted_quantity__isnull=True) | models.Q(counted_quantity__gte=0),
-                name="stocktake_counted_gte_0"),
+                name="stocktake_counted_gte_0",
+            ),
         ]
 
     @property

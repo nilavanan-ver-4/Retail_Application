@@ -17,17 +17,22 @@ from .importers import CustomerImporter
 from .models import Customer, LedgerEntry
 from .services import outstanding_for, post_ledger_entry
 
-_OWED = Case(When(~Q(invoices__status="Cancelled"),
-                  then=F("invoices__total") - F("invoices__returned_total") - F("invoices__total_paid")),
-             default=0, output_field=DecimalField(max_digits=14, decimal_places=2))
+_OWED = Case(
+    When(
+        ~Q(invoices__status="Cancelled"),
+        then=F("invoices__total") - F("invoices__returned_total") - F("invoices__total_paid"),
+    ),
+    default=0,
+    output_field=DecimalField(max_digits=14, decimal_places=2),
+)
 
 
 class CustomerFilter(df.FilterSet):
     q = df.CharFilter(method="search", label="Search (name, mobile, email)")
-    owing = df.BooleanFilter(method="by_owing", label="Has outstanding balance",
-                             widget=forms.CheckboxInput)
-    status = df.ChoiceFilter(method="by_status", empty_label="Active only",
-                             choices=[("inactive", "Inactive"), ("all", "All")])
+    owing = df.BooleanFilter(method="by_owing", label="Has outstanding balance", widget=forms.CheckboxInput)
+    status = df.ChoiceFilter(
+        method="by_status", empty_label="Active only", choices=[("inactive", "Inactive"), ("all", "All")]
+    )
 
     class Meta:
         model = Customer
@@ -55,13 +60,20 @@ class CustomerListView(FilteredListView):
     model = Customer
     filterset_class = CustomerFilter
     title = "Customers"
-    columns = (("Name", "name"), ("Mobile", "mobile", "text", "nolink"), ("Email", "email"),
-               ("Outstanding", "outstanding", "money"), ("Credit limit", "credit_limit", "money"),
-               ("Since", "created_at", "date"))
-    actions = (("Add customer", "customers:create", "customers.add_customer", "primary"),
-               ("Import", "customers:import", "customers.add_customer"),
-               ("Export CSV", "customers:export", "customers.view_customer"),
-               ("Ledger", "customers:ledger", "customers.view_ledgerentry"))
+    columns = (
+        ("Name", "name"),
+        ("Mobile", "mobile", "text", "nolink"),
+        ("Email", "email"),
+        ("Outstanding", "outstanding", "money"),
+        ("Credit limit", "credit_limit", "money"),
+        ("Since", "created_at", "date"),
+    )
+    actions = (
+        ("Add customer", "customers:create", "customers.add_customer", "primary"),
+        ("Import", "customers:import", "customers.add_customer"),
+        ("Export CSV", "customers:export", "customers.view_customer"),
+        ("Ledger", "customers:ledger", "customers.view_ledgerentry"),
+    )
 
     def get_queryset(self):
         self.queryset = Customer.objects.annotate(outstanding=Sum(_OWED)).order_by("name")
@@ -106,8 +118,7 @@ class CustomerUpdateView(AppPermissionMixin, UpdateView):
     def form_valid(self, form):
         resp = super().form_valid(form)
         if "credit_limit" in form.changed_data:
-            audit_log("customer.credit_limit_changed", self.object,
-                      new=str(self.object.credit_limit))
+            audit_log("customer.credit_limit_changed", self.object, new=str(self.object.credit_limit))
         messages.success(self.request, "Customer updated.")
         return resp
 
@@ -117,11 +128,24 @@ class CustomerExportView(AppPermissionMixin, View):
 
     def get(self, request):
         qs = CustomerFilter(request.GET or None, queryset=Customer.objects.all()).qs
-        rows = [(c.name, c.mobile, c.email, c.billing_address, c.shipping_address,
-                 c.credit_limit or "", "yes" if c.is_active else "no") for c in qs.iterator()]
+        rows = [
+            (
+                c.name,
+                c.mobile,
+                c.email,
+                c.billing_address,
+                c.shipping_address,
+                c.credit_limit or "",
+                "yes" if c.is_active else "no",
+            )
+            for c in qs.iterator()
+        ]
         audit_log("customer.exported", None, summary=f"{len(rows)} customers exported")
-        return csv_response("customers.csv", ["name", "mobile", "email", "billing_address",
-                                              "shipping_address", "credit_limit", "active"], rows)
+        return csv_response(
+            "customers.csv",
+            ["name", "mobile", "email", "billing_address", "shipping_address", "credit_limit", "active"],
+            rows,
+        )
 
 
 class CustomerImportUploadView(ImportUploadView):
@@ -153,14 +177,20 @@ class LedgerFilter(df.FilterSet):
 
 class LedgerListView(FilteredListView):
     """Legacy /ledger page."""
+
     permission_required = "customers.view_ledgerentry"
     model = LedgerEntry
     filterset_class = LedgerFilter
     title = "Customer ledger"
     paginate_by = 50
-    columns = (("Date", "entry_date", "datetime", "nolink"), ("Customer", "customer", "text", "nolink"),
-               ("Type", "entry_type", "text"), ("Amount", "amount", "money"),
-               ("Balance", "balance", "money"), ("Description", "description", "text"))
+    columns = (
+        ("Date", "entry_date", "datetime", "nolink"),
+        ("Customer", "customer", "text", "nolink"),
+        ("Type", "entry_type", "text"),
+        ("Amount", "amount", "money"),
+        ("Balance", "balance", "money"),
+        ("Description", "description", "text"),
+    )
     actions = (("Manual entry", "customers:ledger_add", "customers.add_ledgerentry", "primary"),)
 
     def get_queryset(self):
@@ -171,32 +201,64 @@ class LedgerAddView(AppPermissionMixin, View):
     permission_required = "customers.add_ledgerentry"
 
     def get(self, request):
-        return render(request, "generic/form.html", {"form": ManualLedgerForm(), "title": "Manual ledger entry",
-                                                     "cancel_url": reverse("customers:ledger")})
+        return render(
+            request,
+            "generic/form.html",
+            {
+                "form": ManualLedgerForm(),
+                "title": "Manual ledger entry",
+                "cancel_url": reverse("customers:ledger"),
+            },
+        )
 
     def post(self, request):
         form = ManualLedgerForm(request.POST)
         if form.is_valid():
             d = form.cleaned_data
-            e = post_ledger_entry(d["customer"].pk, d["entry_type"], d["amount"], user=request.user,
-                                  description=d["description"], source=LedgerEntry.Source.MANUAL)
-            audit_log("ledger.manual_entry", e, customer=d["customer"].pk, type=d["entry_type"],
-                      amount=str(d["amount"]), reason=d["description"])
+            e = post_ledger_entry(
+                d["customer"].pk,
+                d["entry_type"],
+                d["amount"],
+                user=request.user,
+                description=d["description"],
+                source=LedgerEntry.Source.MANUAL,
+            )
+            audit_log(
+                "ledger.manual_entry",
+                e,
+                customer=d["customer"].pk,
+                type=d["entry_type"],
+                amount=str(d["amount"]),
+                reason=d["description"],
+            )
             messages.success(request, "Ledger entry recorded.")
             return redirect("customers:ledger")
-        return render(request, "generic/form.html", {"form": form, "title": "Manual ledger entry",
-                                                     "cancel_url": reverse("customers:ledger")})
+        return render(
+            request,
+            "generic/form.html",
+            {"form": form, "title": "Manual ledger entry", "cancel_url": reverse("customers:ledger")},
+        )
 
 
 class CustomerLookupView(AppPermissionMixin, View):
     """JSON lookup by mobile for the billing screen (legacy /get_customer_details)."""
+
     permission_required = "customers.view_customer"
 
     def get(self, request):
         from django.http import JsonResponse
+
         c = Customer.objects.filter(mobile=request.GET.get("mobile", "").strip(), is_active=True).first()
         if not c:
             return JsonResponse({"exists": False})
-        return JsonResponse({"exists": True, "id": c.pk, "name": c.name, "address": c.billing_address,
-                             "mail": c.email, "credit_limit": str(c.credit_limit) if c.credit_limit else None,
-                             "outstanding": str(outstanding_for(c.pk))})
+        return JsonResponse(
+            {
+                "exists": True,
+                "id": c.pk,
+                "name": c.name,
+                "address": c.billing_address,
+                "mail": c.email,
+                "credit_limit": str(c.credit_limit) if c.credit_limit else None,
+                "outstanding": str(outstanding_for(c.pk)),
+            }
+        )

@@ -117,8 +117,13 @@ def compute_invoice(lines, *, discount_percent=ZERO, discount_amount=None, shipp
     return InvoiceTotals(results, subtotal, discount_percent, disc_total, shipping, tax_total, total)
 
 
-def refund_value(line_total: Decimal, line_quantity: int, return_quantity: int,
-                 already_returned_quantity: int, already_refunded: Decimal) -> Decimal:
+def refund_value(
+    line_total: Decimal,
+    line_quantity: int,
+    return_quantity: int,
+    already_returned_quantity: int,
+    already_refunded: Decimal,
+) -> Decimal:
     """Value credited for returning ``return_quantity`` units of an invoice line.
 
     Pro-rata of the line's final total (taxable + tax, i.e. after discounts); when

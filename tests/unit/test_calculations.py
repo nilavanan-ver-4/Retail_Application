@@ -56,19 +56,22 @@ def test_decimal_not_float_artifacts():
     assert t.subtotal == D("0.30")
 
 
-@pytest.mark.parametrize("kwargs,msg", [
-    (dict(lines=[L(1, "10", "11")]), "exceeds the line amount"),
-    (dict(lines=[L(0, "10")]), "positive whole number"),
-    (dict(lines=[L(-1, "10")]), "positive whole number"),
-    (dict(lines=[L(1, "-1")]), "price cannot be negative"),
-    (dict(lines=[L(1, "10", "-1")]), "discount cannot be negative"),
-    (dict(lines=[L(1, "10", tax="101")]), "tax rate"),
-    (dict(lines=[L(1, "10")], discount_percent=D("101")), "between 0 and 100"),
-    (dict(lines=[L(1, "10")], discount_amount=D("10.01")), "exceeds the subtotal"),
-    (dict(lines=[L(1, "10")], discount_percent=D("5"), discount_amount=D("1")), "not both"),
-    (dict(lines=[L(1, "10")], shipping=D("-1")), "Shipping"),
-    (dict(lines=[]), "at least one line"),
-])
+@pytest.mark.parametrize(
+    "kwargs,msg",
+    [
+        (dict(lines=[L(1, "10", "11")]), "exceeds the line amount"),
+        (dict(lines=[L(0, "10")]), "positive whole number"),
+        (dict(lines=[L(-1, "10")]), "positive whole number"),
+        (dict(lines=[L(1, "-1")]), "price cannot be negative"),
+        (dict(lines=[L(1, "10", "-1")]), "discount cannot be negative"),
+        (dict(lines=[L(1, "10", tax="101")]), "tax rate"),
+        (dict(lines=[L(1, "10")], discount_percent=D("101")), "between 0 and 100"),
+        (dict(lines=[L(1, "10")], discount_amount=D("10.01")), "exceeds the subtotal"),
+        (dict(lines=[L(1, "10")], discount_percent=D("5"), discount_amount=D("1")), "not both"),
+        (dict(lines=[L(1, "10")], shipping=D("-1")), "Shipping"),
+        (dict(lines=[]), "at least one line"),
+    ],
+)
 def test_invalid_inputs_rejected(kwargs, msg):
     lines = kwargs.pop("lines")
     with pytest.raises(BusinessRuleError, match=msg):

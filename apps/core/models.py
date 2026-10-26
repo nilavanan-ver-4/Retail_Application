@@ -28,7 +28,8 @@ class DocumentSequence(models.Model):
         receive the same number."""
         with transaction.atomic():
             seq, _ = cls.objects.select_for_update().get_or_create(
-                name=name, defaults={"last_value": start - 1})
+                name=name, defaults={"last_value": start - 1}
+            )
             seq.last_value += 1
             seq.save(update_fields=["last_value"])
             return seq.last_value
@@ -55,8 +56,7 @@ class ImportJob(models.Model):
         CANCELLED = "cancelled", "Cancelled"
 
     kind = models.CharField(max_length=30)
-    uploaded_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL,
-                                    related_name="+")
+    uploaded_by = models.ForeignKey("accounts.User", null=True, on_delete=models.SET_NULL, related_name="+")
     original_name = models.CharField(max_length=255)
     mode = models.CharField(max_length=20, default="create")
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PREVIEW)

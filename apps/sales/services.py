@@ -24,7 +24,7 @@ from apps.customers.models import Customer
 from apps.customers.services import outstanding_for, post_ledger_entry
 from apps.inventory.models import StockMovement
 from apps.inventory.services import apply_movement, lock_products
-from apps.payments.services import lock_invoice, record_payment, recalculate_invoice
+from apps.payments.services import lock_invoice, recalculate_invoice, record_payment
 
 from .calculations import LineInput, compute_invoice
 from .models import Invoice, InvoiceLine
@@ -44,18 +44,34 @@ def _resolve_customer(customer, mobile, name, address, email):
     if not mobile or not name:
         raise BusinessRuleError("Customer mobile and name are required.")
     cust, created = Customer.objects.get_or_create(
-        mobile=mobile, defaults={"name": name, "billing_address": address or "", "email": email or ""})
+        mobile=mobile, defaults={"name": name, "billing_address": address or "", "email": email or ""}
+    )
     if created:
         audit_log("customer.created", cust, via="invoice")
     return cust
 
 
 @transaction.atomic
-def create_invoice(*, user, lines, invoice_date=None, customer=None, customer_mobile=None,
-                   customer_name=None, customer_address="", customer_email="", terms="",
-                   sold_by="", discount_percent=ZERO, discount_amount=None, shipping_charge=ZERO,
-                   payments=(), submission_token=None, can_override_price=False,
-                   can_override_credit=False):
+def create_invoice(
+    *,
+    user,
+    lines,
+    invoice_date=None,
+    customer=None,
+    customer_mobile=None,
+    customer_name=None,
+    customer_address="",
+    customer_email="",
+    terms="",
+    sold_by="",
+    discount_percent=ZERO,
+    discount_amount=None,
+    shipping_charge=ZERO,
+    payments=(),
+    submission_token=None,
+    can_override_price=False,
+    can_override_credit=False,
+):
     """Create a confirmed invoice. Returns ``(invoice, created)``; ``created`` is
     False when ``submission_token`` was already used (duplicate submission)."""
     if submission_token:
@@ -91,14 +107,23 @@ def create_invoice(*, user, lines, invoice_date=None, customer=None, customer_mo
         price = p.selling_price
         if requested is not None and Decimal(requested) != p.selling_price:
             if not can_override_price:
-                raise BusinessRuleError(
-                    f"{p.name}: you are not allowed to change the catalogue price.")
+                raise BusinessRuleError(f"{p.name}: you are not allowed to change the catalogue price.")
             price = Decimal(requested)
             overrides.append((p, p.selling_price, price))
-        inputs.append(LineInput(quantity=int(ln["quantity"]), unit_price=price,
-                                discount=Decimal(ln.get("discount") or 0), tax_rate=p.tax_rate))
-    totals = compute_invoice(inputs, discount_percent=Decimal(discount_percent or 0),
-                             discount_amount=discount_amount, shipping=shipping_charge)
+        inputs.append(
+            LineInput(
+                quantity=int(ln["quantity"]),
+                unit_price=price,
+                discount=Decimal(ln.get("discount") or 0),
+                tax_rate=p.tax_rate,
+            )
+        )
+    totals = compute_invoice(
+        inputs,
+        discount_percent=Decimal(discount_percent or 0),
+        discount_amount=discount_amount,
+        shipping=shipping_charge,
+    )
     if totals.total <= 0:
         raise BusinessRuleError("Invoice total must be greater than zero.")
 
@@ -109,8 +134,7 @@ def create_invoice(*, user, lines, invoice_date=None, customer=None, customer_mo
     if pay_total > totals.total:
         raise BusinessRuleError(f"Payments ({pay_total}) exceed the invoice total ({totals.total}).")
 
-    cust = _resolve_customer(customer, customer_mobile, customer_name, customer_address,
-                             customer_email)
+    cust = _resolve_customer(customer, customer_mobile, customer_name, customer_address, customer_email)
     if not cust.is_active:
         raise BusinessRuleError(f"Customer {cust.name} is inactive.")
     unpaid = totals.total - pay_total
@@ -118,46 +142,91 @@ def create_invoice(*, user, lines, invoice_date=None, customer=None, customer_mo
         Customer.objects.select_for_update().get(pk=cust.pk)
         if outstanding_for(cust.pk) + unpaid > cust.credit_limit:
             raise BusinessRuleError(
-                f"This sale would exceed {cust.name}'s credit limit of {cust.credit_limit}.")
+                f"This sale would exceed {cust.name}'s credit limit of {cust.credit_limit}."
+            )
 
     # --- write ---------------------------------------------------------------
     invoice = Invoice(
-        number=_next_invoice_number(), customer=cust, customer_name=cust.name,
-        customer_mobile=cust.mobile, billing_address=cust.billing_address,
-        date=invoice_date or timezone.localdate(), terms=terms, sold_by=sold_by or user.display_name(),
-        created_by=user, subtotal=totals.subtotal, discount_percent=totals.discount_percent,
-        discount_amount=totals.discount_amount, shipping_charge=totals.shipping,
-        tax_total=totals.tax_total, total=totals.total, submission_token=submission_token or None)
+        number=_next_invoice_number(),
+        customer=cust,
+        customer_name=cust.name,
+        customer_mobile=cust.mobile,
+        billing_address=cust.billing_address,
+        date=invoice_date or timezone.localdate(),
+        terms=terms,
+        sold_by=sold_by or user.display_name(),
+        created_by=user,
+        subtotal=totals.subtotal,
+        discount_percent=totals.discount_percent,
+        discount_amount=totals.discount_amount,
+        shipping_charge=totals.shipping,
+        tax_total=totals.tax_total,
+        total=totals.total,
+        submission_token=submission_token or None,
+    )
     try:
         with transaction.atomic():  # savepoint: a duplicate token must not poison the outer tx
             invoice.save()
     except IntegrityError:
-        existing = Invoice.objects.filter(submission_token=submission_token).first() if submission_token else None
+        existing = (
+            Invoice.objects.filter(submission_token=submission_token).first() if submission_token else None
+        )
         if existing:
             return existing, False
         raise
     for ln, res in zip(lines, totals.lines, strict=True):
         p = products[ln["product_id"]]
         InvoiceLine.objects.create(
-            invoice=invoice, product=p, description=p.name, unit=p.unit, quantity=res.quantity,
-            unit_price=res.unit_price, discount=res.discount, net_amount=res.net,
-            allocated_discount=res.allocated_discount, taxable_amount=res.taxable,
-            tax_rate=res.tax_rate, tax_amount=res.tax, line_total=res.total, unit_cost=p.cost_price)
+            invoice=invoice,
+            product=p,
+            description=p.name,
+            unit=p.unit,
+            quantity=res.quantity,
+            unit_price=res.unit_price,
+            discount=res.discount,
+            net_amount=res.net,
+            allocated_discount=res.allocated_discount,
+            taxable_amount=res.taxable,
+            tax_rate=res.tax_rate,
+            tax_amount=res.tax,
+            line_total=res.total,
+            unit_cost=p.cost_price,
+        )
     for pid, qty in sorted(wanted.items()):
-        apply_movement(pid, StockMovement.Type.SALE, -qty, user=user,
-                       reference=("invoice", invoice.pk), locked_product=products[pid],
-                       unit_cost=products[pid].cost_price, note=f"Invoice {invoice.number}")
-    post_ledger_entry(cust.pk, "Debit", totals.total, user=user, invoice=invoice,
-                      description=f"Invoice Creation - {cust.name} (Invoice #{invoice.number})")
+        apply_movement(
+            pid,
+            StockMovement.Type.SALE,
+            -qty,
+            user=user,
+            reference=("invoice", invoice.pk),
+            locked_product=products[pid],
+            unit_cost=products[pid].cost_price,
+            note=f"Invoice {invoice.number}",
+        )
+    post_ledger_entry(
+        cust.pk,
+        "Debit",
+        totals.total,
+        user=user,
+        invoice=invoice,
+        description=f"Invoice Creation - {cust.name} (Invoice #{invoice.number})",
+    )
     for pay in payments:
-        record_payment(invoice.pk, amount=pay["amount"], method=pay["method"], user=user,
-                       reference=pay.get("reference", ""), invoice=invoice,
-                       paid_on=invoice.date)
+        record_payment(
+            invoice.pk,
+            amount=pay["amount"],
+            method=pay["method"],
+            user=user,
+            reference=pay.get("reference", ""),
+            invoice=invoice,
+            paid_on=invoice.date,
+        )
     recalculate_invoice(invoice)
     for p, old, new in overrides:
         audit_log("invoice.price_override", invoice, product=p.sku, catalogue=str(old), charged=str(new))
-    audit_log("invoice.created", invoice, total=str(invoice.total), lines=len(lines),
-              paid=str(invoice.total_paid))
+    audit_log(
+        "invoice.created", invoice, total=str(invoice.total), lines=len(lines), paid=str(invoice.total_paid)
+    )
     return invoice, True
 
 
@@ -184,12 +253,24 @@ def cancel_invoice(invoice_id, *, user, reason):
         wanted[ln.product_id] += ln.quantity
     products = lock_products(wanted)
     for pid, qty in sorted(wanted.items()):
-        apply_movement(pid, StockMovement.Type.SALE_CANCEL, qty, user=user,
-                       reference=("invoice", invoice.pk), locked_product=products[pid],
-                       note=f"Cancelled invoice {invoice.number}")
+        apply_movement(
+            pid,
+            StockMovement.Type.SALE_CANCEL,
+            qty,
+            user=user,
+            reference=("invoice", invoice.pk),
+            locked_product=products[pid],
+            note=f"Cancelled invoice {invoice.number}",
+        )
     if invoice.customer_id:
-        post_ledger_entry(invoice.customer_id, "Credit", invoice.total, user=user, invoice=invoice,
-                          description=f"Invoice cancelled - Invoice #{invoice.number}: {reason}")
+        post_ledger_entry(
+            invoice.customer_id,
+            "Credit",
+            invoice.total,
+            user=user,
+            invoice=invoice,
+            description=f"Invoice cancelled - Invoice #{invoice.number}: {reason}",
+        )
     invoice.status = Invoice.Status.CANCELLED
     invoice.cancelled_at = timezone.now()
     invoice.cancelled_by = user

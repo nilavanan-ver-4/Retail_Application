@@ -345,3 +345,6 @@ htmlcov/
 .ruff_cache/
 *.sqlite3
 /tests/e2e/artifacts/
+
+# legacy rollback copy writes uploads here when run
+legacy_flask/uploads/

@@ -1,9 +1,8 @@
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import connection
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.generic import TemplateView
-
-from django.contrib.auth.mixins import LoginRequiredMixin
 
 
 def health(request):
@@ -35,9 +34,14 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         from django.utils import timezone
 
         from apps.reports.queries import dashboard_data
+
         ctx = super().get_context_data(**kwargs)
         u = self.request.user
         ctx["today"] = timezone.localdate()
         # real database figures; users who cannot see sales/stock get an empty welcome panel
-        ctx["d"] = dashboard_data(ctx["today"]) if (u.has_perm("sales.view_invoice") or u.has_perm("products.view_product")) else None
+        ctx["d"] = (
+            dashboard_data(ctx["today"])
+            if (u.has_perm("sales.view_invoice") or u.has_perm("products.view_product"))
+            else None
+        )
         return ctx

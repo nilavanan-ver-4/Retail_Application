@@ -19,6 +19,7 @@ class Supplier(TimeStampedModel):
 
     def get_absolute_url(self):
         from django.urls import reverse
+
         return reverse("suppliers:detail", args=[self.pk])
 
     def __str__(self):

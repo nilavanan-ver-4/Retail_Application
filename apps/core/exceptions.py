@@ -20,7 +20,8 @@ class InsufficientStock(BusinessRuleError):
     def __init__(self, product, available, requested):
         self.product, self.available, self.requested = product, available, requested
         super().__init__(
-            f"Not enough stock for {product.name} (requested {requested}, available {available})")
+            f"Not enough stock for {product.name} (requested {requested}, available {available})"
+        )
 
 
 def api_exception_handler(exc, context):

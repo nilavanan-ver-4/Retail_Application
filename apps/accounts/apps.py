@@ -4,6 +4,7 @@ from django.db.models.signals import post_migrate
 
 def _sync_roles(sender, **kwargs):
     from .roles import sync_roles
+
     sync_roles()
 
 
@@ -19,4 +20,5 @@ class AccountsConfig(AppConfig):
     @staticmethod
     def _last_app():
         from django.apps import apps
+
         return apps.get_app_config("api")

@@ -55,7 +55,10 @@ class UserUpdateView(AppPermissionMixin, UpdateView):
         target = self.object
         if target.pk == self.request.user.pk:
             # prevents self-lockout and self-escalation
-            if set(form.cleaned_data["roles"]) != set(target.groups.all()) or not form.cleaned_data["is_active"]:
+            if (
+                set(form.cleaned_data["roles"]) != set(target.groups.all())
+                or not form.cleaned_data["is_active"]
+            ):
                 messages.error(self.request, "You cannot change your own roles or deactivate yourself.")
                 return self.form_invalid(form)
         with transaction.atomic():

@@ -2,9 +2,7 @@ import uuid
 from datetime import date
 
 import django_filters as df
-from django import forms
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
@@ -19,8 +17,14 @@ from apps.products.models import Product
 from apps.suppliers.models import Supplier
 
 from . import services
-from .forms import (LineForm, OrderForm, QuickReceiveForm, ReceiptHeaderForm, SupplierInvoiceForm,
-                    SupplierPaymentForm)
+from .forms import (
+    LineForm,
+    OrderForm,
+    QuickReceiveForm,
+    ReceiptHeaderForm,
+    SupplierInvoiceForm,
+    SupplierPaymentForm,
+)
 from .models import GoodsReceipt, PurchaseOrder, SupplierInvoice
 
 
@@ -29,9 +33,16 @@ def _lines_from(formset):
     for f in formset:
         d = f.cleaned_data
         if d.get("product"):
-            lines.append({"product": d["product"], "quantity": d["quantity"],
-                          "unit_cost": d["unit_cost"] if d.get("unit_cost") is not None else d["product"].cost_price,
-                          "discount": d.get("discount") or 0})
+            lines.append(
+                {
+                    "product": d["product"],
+                    "quantity": d["quantity"],
+                    "unit_cost": d["unit_cost"]
+                    if d.get("unit_cost") is not None
+                    else d["product"].cost_price,
+                    "discount": d.get("discount") or 0,
+                }
+            )
     return lines
 
 
@@ -54,9 +65,14 @@ class OrderListView(FilteredListView):
     model = PurchaseOrder
     filterset_class = OrderFilter
     title = "Purchase orders"
-    columns = (("Number", "number"), ("Supplier", "supplier", "text", "nolink"), ("Order date", "order_date", "date"),
-               ("Expected", "expected_date", "date"), ("Status", "get_status_display", "status"),
-               ("Total", "total", "money"))
+    columns = (
+        ("Number", "number"),
+        ("Supplier", "supplier", "text", "nolink"),
+        ("Order date", "order_date", "date"),
+        ("Expected", "expected_date", "date"),
+        ("Status", "get_status_display", "status"),
+        ("Total", "total", "money"),
+    )
     actions = (("New purchase order", "purchasing:order_create", "purchasing.add_purchaseorder", "primary"),)
 
     def get_queryset(self):
@@ -67,9 +83,16 @@ class OrderCreateView(AppPermissionMixin, View):
     permission_required = "purchasing.add_purchaseorder"
 
     def _render(self, request, form, formset):
-        return render(request, "purchasing/doc_form.html", {
-            "title": "New purchase order", "form": form, "formset": formset,
-            "cancel_url": reverse("purchasing:order_list")})
+        return render(
+            request,
+            "purchasing/doc_form.html",
+            {
+                "title": "New purchase order",
+                "form": form,
+                "formset": formset,
+                "cancel_url": reverse("purchasing:order_list"),
+            },
+        )
 
     def get(self, request):
         initial = {"order_date": timezone.localdate(), "supplier": request.GET.get("supplier")}
@@ -80,14 +103,28 @@ class OrderCreateView(AppPermissionMixin, View):
         if form.is_valid() and formset.is_valid():
             lines = _lines_from(formset)
             try:
-                status = (PurchaseOrder.Status.ORDERED if "place" in request.POST
-                          else PurchaseOrder.Status.DRAFT)
+                status = (
+                    PurchaseOrder.Status.ORDERED if "place" in request.POST else PurchaseOrder.Status.DRAFT
+                )
                 po = services.create_purchase_order(
-                    supplier=form.cleaned_data["supplier"], order_date=form.cleaned_data["order_date"],
-                    expected_date=form.cleaned_data["expected_date"], notes=form.cleaned_data["notes"],
-                    discount=form.cleaned_data["discount"], user=request.user, status=status,
-                    lines=[{"product": ln["product"], "quantity": ln["quantity"], "unit_cost": ln["unit_cost"],
-                            "discount": ln["discount"], "tax_rate": ln["product"].tax_rate} for ln in lines])
+                    supplier=form.cleaned_data["supplier"],
+                    order_date=form.cleaned_data["order_date"],
+                    expected_date=form.cleaned_data["expected_date"],
+                    notes=form.cleaned_data["notes"],
+                    discount=form.cleaned_data["discount"],
+                    user=request.user,
+                    status=status,
+                    lines=[
+                        {
+                            "product": ln["product"],
+                            "quantity": ln["quantity"],
+                            "unit_cost": ln["unit_cost"],
+                            "discount": ln["discount"],
+                            "tax_rate": ln["product"].tax_rate,
+                        }
+                        for ln in lines
+                    ],
+                )
             except BusinessRuleError as exc:
                 form.add_error(None, str(exc))
             else:
@@ -116,8 +153,11 @@ class OrderStatusView(AppPermissionMixin, View):
             po = PurchaseOrder.objects.select_for_update().get(pk=pk)
             if action == "place" and po.status == PurchaseOrder.Status.DRAFT:
                 po.status = PurchaseOrder.Status.ORDERED
-            elif action == "cancel" and po.status in (PurchaseOrder.Status.DRAFT, PurchaseOrder.Status.ORDERED) \
-                    and not po.receipts.filter(status=GoodsReceipt.Status.CONFIRMED).exists():
+            elif (
+                action == "cancel"
+                and po.status in (PurchaseOrder.Status.DRAFT, PurchaseOrder.Status.ORDERED)
+                and not po.receipts.filter(status=GoodsReceipt.Status.CONFIRMED).exists()
+            ):
                 po.status = PurchaseOrder.Status.CANCELLED
             else:
                 messages.error(request, "That change is not allowed for this order's current state.")
@@ -142,8 +182,13 @@ class ReceiptListView(FilteredListView):
     model = GoodsReceipt
     filterset_class = ReceiptFilter
     title = "Goods receipts"
-    columns = (("Number", "number"), ("Supplier", "supplier", "text", "nolink"), ("Date", "receipt_date", "date"),
-               ("PO", "purchase_order", "text", "nolink"), ("Status", "get_status_display", "status"))
+    columns = (
+        ("Number", "number"),
+        ("Supplier", "supplier", "text", "nolink"),
+        ("Date", "receipt_date", "date"),
+        ("PO", "purchase_order", "text", "nolink"),
+        ("Status", "get_status_display", "status"),
+    )
     actions = (("New receipt", "purchasing:receipt_create", "purchasing.add_goodsreceipt", "primary"),)
 
     def get_queryset(self):
@@ -158,9 +203,18 @@ class ReceiptCreateView(AppPermissionMixin, View):
         return get_object_or_404(PurchaseOrder, pk=pk) if pk else None
 
     def _render(self, request, form, formset, po):
-        return render(request, "purchasing/doc_form.html", {
-            "title": f"Receive goods{' for ' + po.number if po else ''}", "form": form, "formset": formset,
-            "po": po, "cancel_url": reverse("purchasing:receipt_list"), "receipt": True})
+        return render(
+            request,
+            "purchasing/doc_form.html",
+            {
+                "title": f"Receive goods{' for ' + po.number if po else ''}",
+                "form": form,
+                "formset": formset,
+                "po": po,
+                "cancel_url": reverse("purchasing:receipt_list"),
+                "receipt": True,
+            },
+        )
 
     def get(self, request):
         po = self._po(request)
@@ -168,8 +222,11 @@ class ReceiptCreateView(AppPermissionMixin, View):
         lines = []
         if po:
             initial["supplier"] = po.supplier_id
-            lines = [{"product": ln.product_id, "quantity": ln.outstanding, "unit_cost": ln.unit_cost}
-                     for ln in po.lines.all() if ln.outstanding > 0]
+            lines = [
+                {"product": ln.product_id, "quantity": ln.outstanding, "unit_cost": ln.unit_cost}
+                for ln in po.lines.all()
+                if ln.outstanding > 0
+            ]
         fs = formset_factory(LineForm, extra=0 if lines else 6)(initial=lines)
         return self._render(request, ReceiptHeaderForm(initial=initial), fs, po)
 
@@ -188,11 +245,22 @@ class ReceiptCreateView(AppPermissionMixin, View):
             if not form.errors:
                 try:
                     r = services.create_receipt(
-                        supplier=form.cleaned_data["supplier"], receipt_date=form.cleaned_data["receipt_date"],
-                        delivery_note=form.cleaned_data["delivery_note"], comments=form.cleaned_data["comments"],
-                        purchase_order=po, user=request.user,
-                        lines=[{"product": ln["product"], "quantity": ln["quantity"], "unit_cost": ln["unit_cost"],
-                                "po_line": ln.get("po_line")} for ln in lines])
+                        supplier=form.cleaned_data["supplier"],
+                        receipt_date=form.cleaned_data["receipt_date"],
+                        delivery_note=form.cleaned_data["delivery_note"],
+                        comments=form.cleaned_data["comments"],
+                        purchase_order=po,
+                        user=request.user,
+                        lines=[
+                            {
+                                "product": ln["product"],
+                                "quantity": ln["quantity"],
+                                "unit_cost": ln["unit_cost"],
+                                "po_line": ln.get("po_line"),
+                            }
+                            for ln in lines
+                        ],
+                    )
                 except BusinessRuleError as exc:
                     form.add_error(None, str(exc))
                 else:
@@ -228,14 +296,21 @@ class ReceiptConfirmView(AppPermissionMixin, View):
 
 class QuickReceiveView(AppPermissionMixin, View):
     """Legacy ``/add_item``: add stock for one product and book the supplier invoice."""
+
     permission_required = "purchasing.receive_goods"
 
     def get(self, request, product_id):
         product = get_object_or_404(Product, pk=product_id)
-        return render(request, "generic/form.html", {
-            "form": QuickReceiveForm(initial={"unit_cost": product.cost_price}),
-            "title": f"Receive stock: {product.name}", "cancel_url": product.get_absolute_url(),
-            "submit_label": "Receive & record supplier invoice"})
+        return render(
+            request,
+            "generic/form.html",
+            {
+                "form": QuickReceiveForm(initial={"unit_cost": product.cost_price}),
+                "title": f"Receive stock: {product.name}",
+                "cancel_url": product.get_absolute_url(),
+                "submit_label": "Receive & record supplier invoice",
+            },
+        )
 
     def post(self, request, product_id):
         product = get_object_or_404(Product, pk=product_id)
@@ -243,16 +318,30 @@ class QuickReceiveView(AppPermissionMixin, View):
         if form.is_valid():
             try:
                 receipt, inv = services.quick_receive(
-                    product=product, quantity=form.cleaned_data["quantity"], user=request.user,
-                    unit_cost=form.cleaned_data["unit_cost"], comments=form.cleaned_data["comments"])
+                    product=product,
+                    quantity=form.cleaned_data["quantity"],
+                    user=request.user,
+                    unit_cost=form.cleaned_data["unit_cost"],
+                    comments=form.cleaned_data["comments"],
+                )
             except BusinessRuleError as exc:
                 form.add_error(None, str(exc))
             else:
-                messages.success(request, f"Received {form.cleaned_data['quantity']} x {product.name}; "
-                                          f"supplier invoice {inv.invoice_number} recorded as unpaid.")
+                messages.success(
+                    request,
+                    f"Received {form.cleaned_data['quantity']} x {product.name}; "
+                    f"supplier invoice {inv.invoice_number} recorded as unpaid.",
+                )
                 return redirect("inventory:stock")
-        return render(request, "generic/form.html", {
-            "form": form, "title": f"Receive stock: {product.name}", "cancel_url": product.get_absolute_url()})
+        return render(
+            request,
+            "generic/form.html",
+            {
+                "form": form,
+                "title": f"Receive stock: {product.name}",
+                "cancel_url": product.get_absolute_url(),
+            },
+        )
 
 
 # ------------------------------------------------------------ supplier invoices
@@ -271,10 +360,17 @@ class SupplierInvoiceListView(FilteredListView):
     model = SupplierInvoice
     filterset_class = SupplierInvoiceFilter
     title = "Supplier invoices"
-    columns = (("Invoice no.", "invoice_number"), ("Supplier", "supplier", "text", "nolink"),
-               ("Date", "invoice_date", "date"), ("Total", "total_amount", "money"),
-               ("Paid", "paid_amount", "money"), ("Payment", "payment_status", "status"))
-    actions = (("Record supplier invoice", "purchasing:invoice_create", "purchasing.add_supplierinvoice", "primary"),)
+    columns = (
+        ("Invoice no.", "invoice_number"),
+        ("Supplier", "supplier", "text", "nolink"),
+        ("Date", "invoice_date", "date"),
+        ("Total", "total_amount", "money"),
+        ("Paid", "paid_amount", "money"),
+        ("Payment", "payment_status", "status"),
+    )
+    actions = (
+        ("Record supplier invoice", "purchasing:invoice_create", "purchasing.add_supplierinvoice", "primary"),
+    )
 
     def get_queryset(self):
         return super().get_queryset().select_related("supplier")
@@ -284,9 +380,16 @@ class SupplierInvoiceCreateView(AppPermissionMixin, View):
     permission_required = "purchasing.add_supplierinvoice"
 
     def _render(self, request, form, formset):
-        return render(request, "purchasing/doc_form.html", {
-            "title": "Record supplier invoice", "form": form, "formset": formset,
-            "cancel_url": reverse("purchasing:invoice_list")})
+        return render(
+            request,
+            "purchasing/doc_form.html",
+            {
+                "title": "Record supplier invoice",
+                "form": form,
+                "formset": formset,
+                "cancel_url": reverse("purchasing:invoice_list"),
+            },
+        )
 
     def get(self, request):
         initial = {"invoice_date": date.today()}
@@ -295,8 +398,10 @@ class SupplierInvoiceCreateView(AppPermissionMixin, View):
         if request.GET.get("receipt"):
             receipt = get_object_or_404(GoodsReceipt, pk=request.GET["receipt"])
             initial["supplier"] = receipt.supplier_id
-            lines = [{"product": ln.product_id, "quantity": ln.quantity, "unit_cost": ln.unit_cost}
-                     for ln in receipt.lines.all()]
+            lines = [
+                {"product": ln.product_id, "quantity": ln.quantity, "unit_cost": ln.unit_cost}
+                for ln in receipt.lines.all()
+            ]
         fs = formset_factory(LineForm, extra=0 if lines else 6)(initial=lines)
         return self._render(request, SupplierInvoiceForm(initial=initial), fs)
 
@@ -307,11 +412,18 @@ class SupplierInvoiceCreateView(AppPermissionMixin, View):
             receipt = GoodsReceipt.objects.filter(pk=request.GET.get("receipt")).first()
             try:
                 inv = services.record_supplier_invoice(
-                    supplier=form.cleaned_data["supplier"], invoice_number=form.cleaned_data["invoice_number"],
-                    invoice_date=form.cleaned_data["invoice_date"], due_date=form.cleaned_data["due_date"],
-                    notes=form.cleaned_data["notes"], user=request.user, receipt=receipt,
-                    lines=[{"product": ln["product"], "quantity": ln["quantity"], "unit_cost": ln["unit_cost"]}
-                           for ln in lines])
+                    supplier=form.cleaned_data["supplier"],
+                    invoice_number=form.cleaned_data["invoice_number"],
+                    invoice_date=form.cleaned_data["invoice_date"],
+                    due_date=form.cleaned_data["due_date"],
+                    notes=form.cleaned_data["notes"],
+                    user=request.user,
+                    receipt=receipt,
+                    lines=[
+                        {"product": ln["product"], "quantity": ln["quantity"], "unit_cost": ln["unit_cost"]}
+                        for ln in lines
+                    ],
+                )
             except BusinessRuleError as exc:
                 form.add_error(None, str(exc))
             else:
@@ -330,8 +442,13 @@ class SupplierInvoiceDetailView(AppPermissionMixin, DetailView):
         ctx["lines"] = self.object.lines.select_related("product")
         ctx["payments"] = self.object.payments.all()
         if self.request.user.has_perm("purchasing.add_supplierpayment") and self.object.balance > 0:
-            ctx["pay_form"] = SupplierPaymentForm(initial={
-                "amount": self.object.balance, "paid_on": timezone.localdate(), "token": uuid.uuid4().hex})
+            ctx["pay_form"] = SupplierPaymentForm(
+                initial={
+                    "amount": self.object.balance,
+                    "paid_on": timezone.localdate(),
+                    "token": uuid.uuid4().hex,
+                }
+            )
         return ctx
 
 
@@ -346,9 +463,15 @@ class SupplierPaymentView(AppPermissionMixin, View):
             return redirect(inv)
         d = form.cleaned_data
         try:
-            services.pay_supplier_invoice(inv.pk, amount=d["amount"], method=d["method"], paid_on=d["paid_on"],
-                                          reference=d["reference"], user=request.user,
-                                          idempotency_key=d["token"] or None)
+            services.pay_supplier_invoice(
+                inv.pk,
+                amount=d["amount"],
+                method=d["method"],
+                paid_on=d["paid_on"],
+                reference=d["reference"],
+                user=request.user,
+                idempotency_key=d["token"] or None,
+            )
         except BusinessRuleError as exc:
             messages.error(request, str(exc))
         else:

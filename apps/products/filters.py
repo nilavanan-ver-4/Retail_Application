@@ -8,12 +8,22 @@ class ProductFilter(df.FilterSet):
     q = df.CharFilter(method="search", label="Search (name, SKU, barcode)")
     category = df.ModelChoiceFilter(queryset=Category.objects.all())
     brand = df.ModelChoiceFilter(queryset=Brand.objects.all())
-    status = df.ChoiceFilter(method="by_status", label="Status", empty_label="Active only",
-                             choices=[("archived", "Archived"), ("all", "All")])
-    stock = df.ChoiceFilter(method="by_stock", label="Stock", empty_label="Any",
-                            choices=[("low", "Low stock"), ("out", "Out of stock"), ("in", "In stock")])
-    order = df.OrderingFilter(fields=(("name", "name"), ("sku", "sku"), ("selling_price", "price"),
-                                      ("stock_on_hand", "stock")), label="Sort by")
+    status = df.ChoiceFilter(
+        method="by_status",
+        label="Status",
+        empty_label="Active only",
+        choices=[("archived", "Archived"), ("all", "All")],
+    )
+    stock = df.ChoiceFilter(
+        method="by_stock",
+        label="Stock",
+        empty_label="Any",
+        choices=[("low", "Low stock"), ("out", "Out of stock"), ("in", "In stock")],
+    )
+    order = df.OrderingFilter(
+        fields=(("name", "name"), ("sku", "sku"), ("selling_price", "price"), ("stock_on_hand", "stock")),
+        label="Sort by",
+    )
 
     class Meta:
         model = Product

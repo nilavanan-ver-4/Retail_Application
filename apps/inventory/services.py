@@ -18,12 +18,21 @@ from apps.products.models import Product
 
 from .models import StockMovement, StockTake
 
-OUTBOUND_TYPES = {StockMovement.Type.SALE, StockMovement.Type.DAMAGE,
-                  StockMovement.Type.RETURN_DAMAGED}
+OUTBOUND_TYPES = {StockMovement.Type.SALE, StockMovement.Type.DAMAGE, StockMovement.Type.RETURN_DAMAGED}
 
 
-def apply_movement(product_id, movement_type, quantity, *, user=None, reference=None, note="",
-                   unit_cost=None, when=None, locked_product=None) -> StockMovement:
+def apply_movement(
+    product_id,
+    movement_type,
+    quantity,
+    *,
+    user=None,
+    reference=None,
+    note="",
+    unit_cost=None,
+    when=None,
+    locked_product=None,
+) -> StockMovement:
     """Post a signed stock movement. ``quantity`` > 0 adds stock, < 0 removes it."""
     if not quantity:
         raise BusinessRuleError("Quantity must not be zero.")
@@ -36,17 +45,25 @@ def apply_movement(product_id, movement_type, quantity, *, user=None, reference=
         product.save(update_fields=["stock_on_hand", "updated_at"])
         ref_type, ref_id = reference if reference else ("", "")
         return StockMovement.objects.create(
-            product=product, movement_type=movement_type, quantity=quantity,
-            balance_after=new_balance, unit_cost=unit_cost, reference_type=ref_type,
-            reference_id=str(ref_id), note=note[:255], created_by=user,
-            created_at=when or timezone.now())
+            product=product,
+            movement_type=movement_type,
+            quantity=quantity,
+            balance_after=new_balance,
+            unit_cost=unit_cost,
+            reference_type=ref_type,
+            reference_id=str(ref_id),
+            note=note[:255],
+            created_by=user,
+            created_at=when or timezone.now(),
+        )
 
 
 def lock_products(product_ids):
     """Lock several products in a deterministic order (prevents deadlocks when
     two invoices contain the same products in different order)."""
-    products = {p.pk: p for p in
-                Product.objects.select_for_update().filter(pk__in=set(product_ids)).order_by("pk")}
+    products = {
+        p.pk: p for p in Product.objects.select_for_update().filter(pk__in=set(product_ids)).order_by("pk")
+    }
     return products
 
 
@@ -58,8 +75,14 @@ def adjust_stock(product_id, delta, *, kind, user, note):
         raise BusinessRuleError("A reason is required for stock adjustments.")
     with transaction.atomic():
         movement = apply_movement(product_id, kind, delta, user=user, note=note)
-        log("stock.adjusted", movement.product, quantity=delta, kind=kind, reason=note,
-            balance_after=movement.balance_after)
+        log(
+            "stock.adjusted",
+            movement.product,
+            quantity=delta,
+            kind=kind,
+            reason=note,
+            balance_after=movement.balance_after,
+        )
     return movement
 
 
@@ -67,8 +90,9 @@ def adjust_stock(product_id, delta, *, kind, user, note):
 def start_stocktake(name, user, products=None):
     st = StockTake.objects.create(name=name, created_by=user)
     qs = products if products is not None else Product.objects.filter(is_active=True)
-    st.lines.bulk_create([st.lines.model(stocktake=st, product=p, system_quantity=p.stock_on_hand)
-                          for p in qs])
+    st.lines.bulk_create(
+        [st.lines.model(stocktake=st, product=p, system_quantity=p.stock_on_hand) for p in qs]
+    )
     return st
 
 
@@ -86,9 +110,15 @@ def apply_stocktake(stocktake_id, user):
         product = Product.objects.select_for_update().get(pk=line.product_id)
         delta = line.counted_quantity - product.stock_on_hand  # vs LIVE stock, not the snapshot
         if delta:
-            apply_movement(product.pk, StockMovement.Type.COUNT, delta, user=user,
-                           reference=("stocktake", st.pk), note=f"Stock-take: {st.name}",
-                           locked_product=product)
+            apply_movement(
+                product.pk,
+                StockMovement.Type.COUNT,
+                delta,
+                user=user,
+                reference=("stocktake", st.pk),
+                note=f"Stock-take: {st.name}",
+                locked_product=product,
+            )
             posted += 1
     st.status = StockTake.Status.APPLIED
     st.applied_at = timezone.now()
@@ -118,8 +148,11 @@ def fifo_ageing(stock, inbound, today=None, buckets=(30, 60, 90)):
     today = today or timezone.localdate()
     remaining = stock
     result = defaultdict(int)
-    labels = [f"0-{buckets[0]} days"] + [f"{a + 1}-{b} days" for a, b in zip(buckets, buckets[1:], strict=False)] \
+    labels = (
+        [f"0-{buckets[0]} days"]
+        + [f"{a + 1}-{b} days" for a, b in zip(buckets, buckets[1:], strict=False)]
         + [f"{buckets[-1]}+ days"]
+    )
     for when, qty in sorted(inbound, key=lambda x: x[0], reverse=True):
         if remaining <= 0:
             break

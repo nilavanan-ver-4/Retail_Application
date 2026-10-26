@@ -6,11 +6,15 @@ from .models import StockMovement
 
 
 class AdjustmentForm(forms.Form):
-    KINDS = [(StockMovement.Type.ADJUSTMENT, "Adjustment (increase or decrease)"),
-             (StockMovement.Type.DAMAGE, "Damaged / expired write-off (decrease)")]
+    KINDS = [
+        (StockMovement.Type.ADJUSTMENT, "Adjustment (increase or decrease)"),
+        (StockMovement.Type.DAMAGE, "Damaged / expired write-off (decrease)"),
+    ]
     product = forms.ModelChoiceField(queryset=Product.objects.filter(is_active=True))
     kind = forms.ChoiceField(choices=KINDS)
-    quantity = forms.IntegerField(help_text="Positive adds stock, negative removes. Write-offs are always removed.")
+    quantity = forms.IntegerField(
+        help_text="Positive adds stock, negative removes. Write-offs are always removed."
+    )
     reason = forms.CharField(max_length=255, help_text="Required - recorded in the audit log.")
 
     def clean(self):

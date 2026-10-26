@@ -29,8 +29,9 @@ class Payment(TimeStampedModel):
         REVERSED = "reversed", "Reversed"
 
     invoice = models.ForeignKey("sales.Invoice", on_delete=models.PROTECT, related_name="payments")
-    customer = models.ForeignKey("customers.Customer", null=True, on_delete=models.PROTECT,
-                                 related_name="payments")
+    customer = models.ForeignKey(
+        "customers.Customer", null=True, on_delete=models.PROTECT, related_name="payments"
+    )
     kind = models.CharField(max_length=8, choices=Kind.choices, default=Kind.PAYMENT)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     method = models.CharField(max_length=20, choices=Method.choices)
@@ -41,22 +42,23 @@ class Payment(TimeStampedModel):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.COMPLETED)
     idempotency_key = models.CharField(max_length=64, unique=True, null=True, blank=True)
     notes = models.CharField(max_length=255, blank=True)
-    created_by = models.ForeignKey("accounts.User", null=True, blank=True,
-                                   on_delete=models.SET_NULL, related_name="+")
+    created_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     reversed_at = models.DateTimeField(null=True, blank=True)
-    reversed_by = models.ForeignKey("accounts.User", null=True, blank=True,
-                                    on_delete=models.SET_NULL, related_name="+")
+    reversed_by = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     reverse_reason = models.CharField(max_length=255, blank=True)
 
     class Meta:
         db_table = "payments_payment"
         ordering = ["-paid_on", "-id"]
-        permissions = [("reverse_payment", "Can reverse payments"),
-                       ("view_refund", "Can view refunds")]
-        indexes = [models.Index(fields=["paid_on", "method"]),
-                   models.Index(fields=["invoice", "status"])]
-        constraints = [models.CheckConstraint(condition=Q(amount__gte=Decimal("0")),
-                                              name="payment_amount_gte_0")]
+        permissions = [("reverse_payment", "Can reverse payments"), ("view_refund", "Can view refunds")]
+        indexes = [models.Index(fields=["paid_on", "method"]), models.Index(fields=["invoice", "status"])]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gte=Decimal("0")), name="payment_amount_gte_0")
+        ]
 
     def __str__(self):
         return f"{self.get_kind_display()} {self.amount} on {self.invoice_id}"

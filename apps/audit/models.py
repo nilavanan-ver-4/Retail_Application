@@ -15,8 +15,9 @@ class AuditLog(models.Model):
     payments, roles, logins). Never stores passwords or card data."""
 
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
-                             on_delete=models.SET_NULL, related_name="+")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     username = models.CharField(max_length=150, blank=True)
     action = models.CharField(max_length=60, db_index=True)
     target_type = models.CharField(max_length=60, blank=True)

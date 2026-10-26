@@ -29,14 +29,24 @@ def _dec(value, field, errors, default=None, minimum=Decimal("0")):
 class ProductImporter(BaseImporter):
     kind = "products"
     required = ("sku", "name", "selling_price")
-    aliases = {"pro_id": "sku", "pro_name": "name", "safety_level": "reorder_level",
-               "hc_code": "hs_code", "terms_from_invoice": "supplier_terms", "mail": "email"}
-    modes = (("create", "Create new products only (existing SKUs are errors)"),
-             ("update", "Create new and UPDATE existing (prices, details; quantity is ADDED as a receipt)"))
+    aliases = {
+        "pro_id": "sku",
+        "pro_name": "name",
+        "safety_level": "reorder_level",
+        "hc_code": "hs_code",
+        "terms_from_invoice": "supplier_terms",
+        "mail": "email",
+    }
+    modes = (
+        ("create", "Create new products only (existing SKUs are errors)"),
+        ("update", "Create new and UPDATE existing (prices, details; quantity is ADDED as a receipt)"),
+    )
 
     def build_context(self, mode):
-        return {"skus": {p.sku.lower(): p.pk for p in Product.objects.only("sku")},
-                "suppliers": set(Supplier.objects.values_list("pk", flat=True))}
+        return {
+            "skus": {p.sku.lower(): p.pk for p in Product.objects.only("sku")},
+            "suppliers": set(Supplier.objects.values_list("pk", flat=True)),
+        }
 
     def identity(self, data):
         return data.get("sku", "").lower() or None
@@ -90,26 +100,45 @@ class ProductImporter(BaseImporter):
         exists = sku.lower() in ctx["skus"]
         if exists and mode != "update":
             errors.append(f"SKU '{sku}' already exists.")
-        data = {"sku": sku, "name": name, "category": (row.get("category") or "General").strip() or "General",
-                "unit": (row.get("unit") or "pcs").strip() or "pcs", "cost_price": str(cost),
-                "selling_price": str(price) if price is not None else "", "tax_rate": str(tax),
-                "reorder_level": reorder, "quantity": qty,
-                "expiry_date": expiry.isoformat() if expiry else "", "supplier_id": supplier_id,
-                "hs_code": (row.get("hs_code") or "").strip(), "barcode": (row.get("barcode") or "").strip(),
-                "supplier_terms": (row.get("supplier_terms") or "").strip()}
+        data = {
+            "sku": sku,
+            "name": name,
+            "category": (row.get("category") or "General").strip() or "General",
+            "unit": (row.get("unit") or "pcs").strip() or "pcs",
+            "cost_price": str(cost),
+            "selling_price": str(price) if price is not None else "",
+            "tax_rate": str(tax),
+            "reorder_level": reorder,
+            "quantity": qty,
+            "expiry_date": expiry.isoformat() if expiry else "",
+            "supplier_id": supplier_id,
+            "hs_code": (row.get("hs_code") or "").strip(),
+            "barcode": (row.get("barcode") or "").strip(),
+            "supplier_terms": (row.get("supplier_terms") or "").strip(),
+        }
         return data, errors, "update" if exists else "create"
 
     def apply(self, rows, user):
         created = updated = 0
         for r in rows:
             d = r["data"]
-            cat, _ = Category.objects.get_or_create(name__iexact=d["category"],
-                                                    defaults={"name": d["category"]})
-            fields = dict(name=d["name"], category=cat, unit=d["unit"], cost_price=Decimal(d["cost_price"]),
-                          selling_price=Decimal(d["selling_price"]), tax_rate=Decimal(d["tax_rate"]),
-                          reorder_level=d["reorder_level"], hs_code=d["hs_code"],
-                          supplier_id=d["supplier_id"], supplier_terms=d["supplier_terms"],
-                          barcode=d["barcode"] or None, expiry_date=d["expiry_date"] or None)
+            cat, _ = Category.objects.get_or_create(
+                name__iexact=d["category"], defaults={"name": d["category"]}
+            )
+            fields = dict(
+                name=d["name"],
+                category=cat,
+                unit=d["unit"],
+                cost_price=Decimal(d["cost_price"]),
+                selling_price=Decimal(d["selling_price"]),
+                tax_rate=Decimal(d["tax_rate"]),
+                reorder_level=d["reorder_level"],
+                hs_code=d["hs_code"],
+                supplier_id=d["supplier_id"],
+                supplier_terms=d["supplier_terms"],
+                barcode=d["barcode"] or None,
+                expiry_date=d["expiry_date"] or None,
+            )
             if r["action"] == "update":
                 p = Product.objects.select_for_update().get(sku__iexact=d["sku"])
                 old = (p.selling_price, p.cost_price, p.tax_rate)
@@ -117,13 +146,24 @@ class ProductImporter(BaseImporter):
                     setattr(p, k, v)
                 p.save()
                 if old != (p.selling_price, p.cost_price, p.tax_rate):
-                    audit_log("product.price_changed", p, via="import", old=[str(x) for x in old],
-                              new=[str(p.selling_price), str(p.cost_price), str(p.tax_rate)])
+                    audit_log(
+                        "product.price_changed",
+                        p,
+                        via="import",
+                        old=[str(x) for x in old],
+                        new=[str(p.selling_price), str(p.cost_price), str(p.tax_rate)],
+                    )
                 updated += 1
             else:
                 p = Product.objects.create(sku=d["sku"], **fields)
                 created += 1
             if d["quantity"]:
-                apply_movement(p.pk, StockMovement.Type.IMPORT, d["quantity"], user=user,
-                               note="Quantity from product import", unit_cost=p.cost_price)
+                apply_movement(
+                    p.pk,
+                    StockMovement.Type.IMPORT,
+                    d["quantity"],
+                    user=user,
+                    note="Quantity from product import",
+                    unit_cost=p.cost_price,
+                )
         return {"created": created, "updated": updated}

@@ -6,17 +6,40 @@ from .models import Brand, Category, Product
 
 
 class ProductForm(forms.ModelForm):
-    opening_stock = forms.IntegerField(min_value=0, required=False, initial=0,
-                                       help_text="Units already on the shelf. Recorded as an opening balance.")
+    opening_stock = forms.IntegerField(
+        min_value=0,
+        required=False,
+        initial=0,
+        help_text="Units already on the shelf. Recorded as an opening balance.",
+    )
 
     class Meta:
         model = Product
-        fields = ["sku", "name", "category", "brand", "barcode", "description", "unit", "hs_code",
-                  "supplier", "supplier_terms", "cost_price", "selling_price", "tax_rate",
-                  "reorder_level", "allow_negative_stock", "expiry_date", "image", "is_active"]
-        widgets = {"expiry_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-                   "description": forms.Textarea(attrs={"rows": 2}),
-                   "supplier_terms": forms.Textarea(attrs={"rows": 2})}
+        fields = [
+            "sku",
+            "name",
+            "category",
+            "brand",
+            "barcode",
+            "description",
+            "unit",
+            "hs_code",
+            "supplier",
+            "supplier_terms",
+            "cost_price",
+            "selling_price",
+            "tax_rate",
+            "reorder_level",
+            "allow_negative_stock",
+            "expiry_date",
+            "image",
+            "is_active",
+        ]
+        widgets = {
+            "expiry_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+            "description": forms.Textarea(attrs={"rows": 2}),
+            "supplier_terms": forms.Textarea(attrs={"rows": 2}),
+        }
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -44,8 +67,9 @@ class ProductForm(forms.ModelForm):
         price = data.get("selling_price")
         can_override = bool(self.user and self.user.has_perm("sales.override_price"))
         if price is not None and cost is not None and price < cost and not can_override:
-            self.add_error("selling_price", "Selling price is below cost. Only a manager can "
-                                            "set a price below cost.")
+            self.add_error(
+                "selling_price", "Selling price is below cost. Only a manager can set a price below cost."
+            )
         return data
 
 
@@ -62,8 +86,13 @@ class BrandForm(forms.ModelForm):
 
 
 class BulkActionForm(forms.Form):
-    ACTIONS = [("archive", "Archive selected"), ("restore", "Restore selected"),
-               ("category", "Set category"), ("tax_rate", "Set tax rate (%)"),
-               ("reorder_level", "Set reorder level"), ("price_percent", "Adjust selling price by %")]
+    ACTIONS = [
+        ("archive", "Archive selected"),
+        ("restore", "Restore selected"),
+        ("category", "Set category"),
+        ("tax_rate", "Set tax rate (%)"),
+        ("reorder_level", "Set reorder level"),
+        ("price_percent", "Adjust selling price by %"),
+    ]
     action = forms.ChoiceField(choices=ACTIONS)
     value = forms.CharField(required=False)

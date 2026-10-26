@@ -50,6 +50,7 @@ def read_table(uploaded):
             table = list(reader)
         else:
             from openpyxl import load_workbook
+
             wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
             ws = wb.worksheets[0]
             table = [[_cell(c) for c in row] for row in ws.iter_rows(values_only=True)]
@@ -71,8 +72,8 @@ def read_table(uploaded):
 
 class BaseImporter:
     kind = ""
-    required = ()          # canonical column names that must be present
-    aliases = {}           # legacy/alternate header -> canonical header
+    required = ()  # canonical column names that must be present
+    aliases = {}  # legacy/alternate header -> canonical header
     modes = (("create", "Create new records only (duplicates are errors)"),)
 
     def canonical_headers(self, headers):
@@ -96,8 +97,9 @@ class BaseImporter:
                     errors.append(f"Duplicate of row {seen[key]} in this file.")
                 else:
                     seen[key] = i
-            out.append({"line": i, "data": data or {}, "action": action if not errors else "error",
-                        "errors": errors})
+            out.append(
+                {"line": i, "data": data or {}, "action": action if not errors else "error", "errors": errors}
+            )
         return out
 
     # hooks ------------------------------------------------------------------

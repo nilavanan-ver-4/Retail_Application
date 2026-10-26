@@ -30,12 +30,19 @@ class FilteredListView(AppPermissionMixin, ListView):
     actions = ()  # (label, url_name, permission or None, css_kind)
 
     def get_columns(self):
-        return [{"label": c[0], "attr": c[1], "kind": c[2] if len(c) > 2 else "text",
-                 "link": i == 0 and (len(c) < 4 or c[3] != "nolink")}
-                for i, c in enumerate(self.columns)]
+        return [
+            {
+                "label": c[0],
+                "attr": c[1],
+                "kind": c[2] if len(c) > 2 else "text",
+                "link": i == 0 and (len(c) < 4 or c[3] != "nolink"),
+            }
+            for i, c in enumerate(self.columns)
+        ]
 
     def get_actions(self):
         from django.urls import reverse
+
         out = []
         for a in self.actions:
             label, name, perm = a[0], a[1], a[2] if len(a) > 2 else None
@@ -46,8 +53,7 @@ class FilteredListView(AppPermissionMixin, ListView):
     def get_queryset(self):
         qs = super().get_queryset()
         if self.filterset_class:
-            self.filterset = self.filterset_class(self.request.GET or None, queryset=qs,
-                                                  request=self.request)
+            self.filterset = self.filterset_class(self.request.GET or None, queryset=qs, request=self.request)
             qs = self.filterset.qs
         return qs
 

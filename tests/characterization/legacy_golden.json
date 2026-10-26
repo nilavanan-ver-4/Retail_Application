@@ -34,7 +34,7 @@
  "invoice4_tampered_post": 302,
  "invoice4_final_stored": [
   [
-   4,
+   100003,
    "10.00",
    "10.00"
   ]
@@ -43,7 +43,7 @@
  "add_ledger_post": 302,
  "invoice": [
   [
-   1,
+   100000,
    1,
    "Cust A",
    "2025-01-10",
@@ -56,7 +56,7 @@
    "cash"
   ],
   [
-   2,
+   100001,
    2,
    "Cust B",
    "2025-01-10",
@@ -69,7 +69,7 @@
    "unpaid"
   ],
   [
-   3,
+   100002,
    3,
    "Cust C",
    "2025-01-10",
@@ -82,7 +82,7 @@
    "unpaid"
   ],
   [
-   4,
+   100003,
    4,
    "Cust D",
    "2025-01-10",
@@ -97,7 +97,7 @@
  ],
  "invoice_products": [
   [
-   1,
+   100000,
    1,
    3,
    "kg",
@@ -106,7 +106,7 @@
    200.0
   ],
   [
-   1,
+   100000,
    2,
    1,
    "l",
@@ -115,7 +115,7 @@
    43.0
   ],
   [
-   2,
+   100001,
    1,
    2,
    "kg",
@@ -124,7 +124,7 @@
    140.0
   ],
   [
-   3,
+   100002,
    1,
    100,
    "kg",
@@ -133,7 +133,7 @@
    7000.0
   ],
   [
-   4,
+   100003,
    1,
    1,
    "kg",
@@ -144,14 +144,14 @@
  ],
  "payment": [
   [
-   1,
+   100000,
    218.7,
    "cash",
    "Paid",
    1
   ],
   [
-   4,
+   100003,
    218.7,
    "cash",
    "Paid",
@@ -164,7 +164,7 @@
    218.7,
    "Debit",
    218.7,
-   "Invoice Creation - Cust A (Invoice #1)"
+   "Invoice Creation - Cust A (Invoice #1000"
   ],
   [
    "0123",
@@ -178,21 +178,21 @@
    140.0,
    "Debit",
    140.0,
-   "Invoice Creation - Cust B (Invoice #2)"
+   "Invoice Creation - Cust B (Invoice #1000"
   ],
   [
    "0789",
    7000.0,
    "Debit",
    7000.0,
-   "Invoice Creation - Cust C (Invoice #3)"
+   "Invoice Creation - Cust C (Invoice #1000"
   ],
   [
    "0999",
    10.0,
    "Debit",
    10.0,
-   "Invoice Creation - Cust D (Invoice #4)"
+   "Invoice Creation - Cust D (Invoice #1000"
   ],
   [
    "0999",

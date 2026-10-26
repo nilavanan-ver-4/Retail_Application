@@ -24,6 +24,12 @@ environ.Env.read_env(BASE_DIR / ".env")  # silently ignored when the file is abs
 DEBUG = env("DEBUG")
 # No insecure fallback: a missing SECRET_KEY must fail loudly outside DEBUG.
 SECRET_KEY = env("SECRET_KEY", default="dev-only-insecure-key-do-not-use" if DEBUG else None)
+if not SECRET_KEY:
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(
+        "SECRET_KEY must be set (see .env.example); there is no insecure fallback outside DEBUG."
+    )
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 
@@ -114,8 +120,7 @@ AUTHENTICATION_BACKENDS = [
 ]
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-     "OPTIONS": {"min_length": 10}},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 10}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
@@ -151,8 +156,11 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
-                    if not DEBUG else "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        if not DEBUG
+        else "django.contrib.staticfiles.storage.StaticFilesStorage"
+    },
 }
 MEDIA_URL = "media/"
 MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
@@ -175,6 +183,9 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = False  # opt in deliberately once HTTPS is permanent
+    # W021 only reminds us that HSTS *preload* is off. Preloading is effectively irreversible, so it
+    # stays a conscious opt-in rather than a default.
+    SILENCED_SYSTEM_CHECKS = ["security.W021"]
     if env.bool("TRUST_PROXY_SSL_HEADER", default=False):
         SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
@@ -223,8 +234,9 @@ SPECTACULAR_SETTINGS = {
 # --- Business configuration -------------------------------------------------
 BUSINESS = {
     "NAME": env("COMPANY_NAME", default="ASKER ENTERPRISE"),
-    "ADDRESS": env("COMPANY_ADDRESS",
-                   default="NO: 2404 4TH FLOOR MALAYAN MANSION, MASJID INDIA, KUALA LUMPUR - 50100"),
+    "ADDRESS": env(
+        "COMPANY_ADDRESS", default="NO: 2404 4TH FLOOR MALAYAN MANSION, MASJID INDIA, KUALA LUMPUR - 50100"
+    ),
     "CONTACT": env("COMPANY_CONTACT", default="0182843318"),
     "EMAIL": env("COMPANY_EMAIL", default="ajmeerdon@gmail.com"),
     "TAX_ID": env("COMPANY_TAX_ID", default=""),
