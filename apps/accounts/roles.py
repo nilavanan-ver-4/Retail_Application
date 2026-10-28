@@ -50,6 +50,12 @@ ROLE_PERMISSIONS = {
         "inventory.view_stockmovement",
         "inventory.adjust_stock",
         *_crud("inventory", "stocktake"),
+        # Separation of duties: stock staff physically RECEIVE goods; purchasing staff order, invoice and pay.
+        "purchasing.receive_goods",
+        "purchasing.view_goodsreceipt",
+        "purchasing.add_goodsreceipt",
+        "purchasing.view_purchaseorder",
+        "suppliers.view_supplier",
         "reports.view_inventory_reports",
     ],
     PURCHASING: [

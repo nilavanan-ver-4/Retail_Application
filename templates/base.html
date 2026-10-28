@@ -39,6 +39,8 @@
     {% if perms.reports.view_sales_reports or perms.reports.view_inventory_reports or perms.reports.view_financial_reports %}
     <li class="group">Insights</li>
     <li><a href="{% url 'reports:index' %}" {% if request.resolver_match.app_name == 'reports' %}aria-current="page"{% endif %}>Reports</a></li>{% endif %}
+    <li class="group">Account</li>
+    <li><a href="{% url 'accounts:password_change' %}">Change password</a></li>
     {% if perms.accounts.view_user or perms.audit.view_auditlog %}<li class="group">Administration</li>{% endif %}
     {% if perms.accounts.view_user %}<li><a href="{% url 'accounts:user_list' %}">Users</a></li>{% endif %}
     {% if perms.audit.view_auditlog %}<li><a href="{% url 'audit:list' %}">Audit log</a></li>{% endif %}

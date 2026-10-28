@@ -247,7 +247,7 @@ def test_django_deploy_checks_pass_with_production_settings(monkeypatch):
     import sys
 
     env = {
-        **os.environ,
+        **{k: v for k, v in os.environ.items() if k != "DJANGO_ALLOW_ASYNC_UNSAFE"},
         "DEBUG": "false",
         "SECRET_KEY": secrets.token_urlsafe(64),
         "ALLOWED_HOSTS": "example.com",

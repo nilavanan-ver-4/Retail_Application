@@ -1,0 +1,8 @@
+t+10s rss_MB=424 pg_conns=8
+t+20s rss_MB=544 pg_conns=8
+t+30s rss_MB=557 pg_conns=8
+t+40s rss_MB=588 pg_conns=8
+t+50s rss_MB=585 pg_conns=8
+t+60s rss_MB=589 pg_conns=8
+t+70s rss_MB=584 pg_conns=8
+t+80s rss_MB=589 pg_conns=8

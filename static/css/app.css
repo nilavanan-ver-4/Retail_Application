@@ -83,6 +83,7 @@ dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; ma
 .login { max-width: 380px; margin: 8vh auto; }
 .login img { display: block; margin: 0 auto 10px; border-radius: 8px; }
 /* invoice builder */
+.builder-grid > * { min-width: 0; }
 .builder-grid { display: grid; grid-template-columns: 1fr 340px; gap: 16px; align-items: start; }
 .search-results { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); max-height: 260px; overflow: auto; }
 .search-results li { padding: 8px 12px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -96,7 +97,11 @@ dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; ma
   .builder-grid { grid-template-columns: 1fr; } .who small { display: none; }
   table.responsive thead { display: none; } table.responsive td { display: flex; justify-content: space-between; gap: 12px; } table.responsive td::before { content: attr(data-label); font-weight: 600; color: var(--muted); }
 }
-@media (max-width: 560px) { .pay-row { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) {
+  .pay-row { grid-template-columns: 1fr 1fr; }
+  .who, .topbar-right a { display: none; }
+  .brand { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; }
+}
 @media print {
   .topbar, .sidebar, .page-head .actions, .no-print, .messages, .filters, .pagination { display: none !important; }
   main, main.with-nav { margin: 0; padding: 0; max-width: none; } body { background: #fff; color: #000; }
