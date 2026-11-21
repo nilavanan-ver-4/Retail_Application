@@ -89,7 +89,10 @@ class PaymentExportView(AppPermissionMixin, View):
     permission_required = "payments.view_payment"
 
     def get(self, request):
-        qs = PaymentFilter(request.GET or None, queryset=Payment.objects.select_related("invoice")).qs
+        base = Payment.objects.select_related("invoice")
+        if not request.user.has_perm("payments.view_refund"):
+            base = base.filter(kind=Payment.Kind.PAYMENT)
+        qs = PaymentFilter(request.GET or None, queryset=base).qs
         rows = [
             (
                 p.paid_on,

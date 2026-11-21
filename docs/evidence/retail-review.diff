@@ -1,0 +1,3149 @@
+diff --git a/.env.example b/.env.example
+index cec0578..8ed001b 100644
+--- a/.env.example
++++ b/.env.example
+@@ -4,6 +4,16 @@ SECRET_KEY=change-me-generate-with-python-c-"import secrets;print(secrets.token_
+ ALLOWED_HOSTS=localhost,127.0.0.1
+ CSRF_TRUSTED_ORIGINS=http://localhost:8000
+ DATABASE_URL=postgres://retail:change-me@localhost:5432/retail
++# Docker Compose database credentials (keep the password URL-safe).
++POSTGRES_DB=retail
++POSTGRES_USER=retail
++POSTGRES_PASSWORD=change-me
++# For local HTTP, use HTTP_BIND=127.0.0.1, HTTP_PORT=8000 and set both
++# SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE to false below.
++HTTP_BIND=0.0.0.0
++HTTP_PORT=80
++# Bound worker count for the Compose web container's 768 MB memory limit.
++GUNICORN_WORKERS=2
+ # Read-only source for `manage.py import_legacy` (the old Flask database)
+ # LEGACY_DATABASE_URL=postgres://retail_ro:change-me@localhost:5432/postgres
+ TIME_ZONE=Asia/Kuala_Lumpur
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index b2f9df9..fa20555 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -5,6 +5,12 @@ on:
+     branches: [main, "claude/**"]
+   pull_request:
+   workflow_call:
++    inputs:
++      ref:
++        description: Immutable revision selected by the release workflow
++        type: string
++        required: false
++        default: ""
+ 
+ permissions:
+   contents: read
+@@ -19,6 +25,7 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
++        with: {ref: "${{ inputs.ref || github.sha }}"}
+       - uses: actions/setup-python@v5
+         with: {python-version: "3.13", cache: pip}
+       - run: pip install -r requirements/dev.txt
+@@ -47,6 +54,7 @@ jobs:
+       DEBUG: "true"
+     steps:
+       - uses: actions/checkout@v4
++        with: {ref: "${{ inputs.ref || github.sha }}"}
+       - uses: actions/setup-python@v5
+         with: {python-version: "3.13", cache: pip}
+       - name: System libraries for WeasyPrint
+@@ -96,6 +104,7 @@ jobs:
+       DEBUG: "true"
+     steps:
+       - uses: actions/checkout@v4
++        with: {ref: "${{ inputs.ref || github.sha }}"}
+       - uses: actions/setup-python@v5
+         with: {python-version: "3.13", cache: pip}
+       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0
+@@ -108,6 +117,7 @@ jobs:
+     needs: [quality, test]
+     steps:
+       - uses: actions/checkout@v4
++        with: {ref: "${{ inputs.ref || github.sha }}"}
+       - uses: docker/setup-buildx-action@v3
+       - uses: docker/build-push-action@v6
+         with: {context: ., push: false, load: true, tags: "retail:ci", cache-from: "type=gha", cache-to: "type=gha,mode=max"}
+diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml
+index a765d16..e948f78 100644
+--- a/.github/workflows/deploy.yml
++++ b/.github/workflows/deploy.yml
+@@ -11,22 +11,37 @@ permissions:
+   packages: write
+ 
+ jobs:
++  resolve:
++    runs-on: ubuntu-latest
++    outputs:
++      sha: ${{ steps.revision.outputs.sha }}
++      image: ${{ steps.revision.outputs.image }}
++    steps:
++      - uses: actions/checkout@v4
++        with: {ref: "${{ inputs.ref }}"}
++      - id: revision
++        run: |
++          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
++          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
++
+   ci:
++    needs: resolve
+     uses: ./.github/workflows/ci.yml
++    with: {ref: "${{ needs.resolve.outputs.sha }}"}
+ 
+   publish:
+-    needs: ci
++    needs: [ci, resolve]
+     runs-on: ubuntu-latest
+     environment: production        # configure required reviewers on this environment
+     steps:
+       - uses: actions/checkout@v4
+-        with: {ref: "${{ inputs.ref }}"}
++        with: {ref: "${{ needs.resolve.outputs.sha }}"}
+       - uses: docker/login-action@v3
+         with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+       - uses: docker/build-push-action@v6
+         with:
+           context: .
+           push: true
+-          tags: ghcr.io/${{ github.repository }}:${{ inputs.ref }}
++          tags: ${{ needs.resolve.outputs.image }}:${{ needs.resolve.outputs.sha }}
+       # The release is then rolled out on the host with docs/OPERATIONS.md ("Deploy / roll back"):
+       #   backup -> docker compose pull -> docker compose run --rm migrate -> docker compose up -d -> health check.
+diff --git a/README.md b/README.md
+index 01e2e8b..ba10a42 100644
+--- a/README.md
++++ b/README.md
+@@ -18,6 +18,7 @@ app, with the legacy data and business rules preserved.
+ 
+ | Document | Contents |
+ |---|---|
++| [docs/RETAIL_REVIEW_2026-11-21.md](docs/RETAIL_REVIEW_2026-11-21.md) | Current end-to-end feature audit, integrity fixes, 294-test verification, remaining gaps and implementation roadmap |
+ | [docs/AUDIT.md](docs/AUDIT.md) | Feature inventory of the Flask app, route mapping, defects & vulnerabilities found |
+ | [docs/MIGRATION.md](docs/MIGRATION.md) | Data-migration strategy, schema mapping, checklist, assumptions, intentional behaviour changes, rollback |
+ | [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md) | Money, tax, stock, payment, return and report definitions |
+@@ -49,6 +50,30 @@ templates/ static/ tests/ scripts/ docker/ docs/ legacy_flask/ samples/
+ 
+ ## Quick start (development)
+ 
++For a local Docker installation on Windows with Docker Desktop running:
++
++```powershell
++powershell -ExecutionPolicy Bypass -File scripts/start-local.ps1
++```
++
++On first run this creates a git-ignored `.env` with random secrets, binds the app to
++http://127.0.0.1:8000, builds the image, waits for PostgreSQL, applies migrations,
++sets up roles and the first administrator, then starts and checks the stack.
++Find the login credentials in `.env` under `BOOTSTRAP_ADMIN_USERNAME` and
++`BOOTSTRAP_ADMIN_PASSWORD`. Existing `.env` files are preserved; ensure they contain
++the required database and bootstrap settings. Use `-Port 8080` on first run to choose
++another port. Local HTTP uses secure-cookie flags set to `false`; use `true` with HTTPS
++in production. The production Compose defaults remain port 80 on all interfaces.
++
++```powershell
++docker compose logs --tail 100 web nginx   # inspect logs
++docker compose stop                      # stop; keep database and media
++docker compose up -d --wait               # restart
++```
++
++Database and uploaded media persist in Docker named volumes. Demo data is optional;
++the startup workflow creates an empty business database.
++
+ Prerequisites: Python 3.13, PostgreSQL 14+ (16 recommended), `libpango` for PDFs (`apt install libpango-1.0-0 libpangoft2-1.0-0`).
+ 
+ ```bash
+@@ -95,6 +120,21 @@ Optional demo data (synthetic — never run on a real database):
+ 
+ ## Migrating the existing Flask data
+ 
++### Managing invoice tax
++
++Open **Tax** in the sidebar. Administrators and managers can set a tax label,
++registration number and the default rate for newly created products. Select existing
++products, enter a rate and a reason, then choose **Apply rate to selected products**.
++Use 0% for untaxed products. Prices exclude tax; tax is added after line and invoice
++discounts. Billing shows each line's rate, tax and total before saving.
++
++Issued invoices save their tax rates, label and registration number, so later settings
++changes do not rewrite invoice history. The invoice tax summary offers date filters
++and CSV export; it excludes cancelled invoices and shows original amounts before
++return credits or refunds. Demo seeding now defaults to 0% tax; use `seed_demo
++--tax-rate 6 ...` only when an explicit sample rate is wanted. Older demo records
++retain the sample rates they were created with.
++
+ ```bash
+ export LEGACY_DATABASE_URL=postgres://readonly_user:pw@host:5432/postgres   # the old database
+ python manage.py migrate && python manage.py setup_roles
+diff --git a/apps/accounts/roles.py b/apps/accounts/roles.py
+index 09f3ee1..1e4afac 100644
+--- a/apps/accounts/roles.py
++++ b/apps/accounts/roles.py
+@@ -18,7 +18,12 @@ def _crud(app, model, actions="add change view"):
+     return [f"{app}.{a}_{model}" for a in actions.split()]
+ 
+ 
+-_PRODUCT_READ = ["products.view_product", "products.view_category", "products.view_brand"]
++_PRODUCT_READ = [
++    "products.view_product",
++    "products.view_category",
++    "products.view_brand",
++    "products.view_taxconfiguration",
++]
+ _CUSTOMER_FULL = _crud("customers", "customer") + _crud("customers", "ledgerentry", "view")
+ _REPORT_ALL = [
+     "reports.view_sales_reports",
+@@ -41,6 +46,7 @@ ROLE_PERMISSIONS = {
+         "returns.add_salesreturn",
+     ],
+     INVENTORY: [
++        "products.view_taxconfiguration",
+         *_crud("products", "product"),
+         *_crud("products", "category"),
+         *_crud("products", "brand"),
+@@ -104,6 +110,7 @@ ROLE_PERMISSIONS[MANAGER] = sorted(
+             "inventory.adjust_stock",
+             "reports.view_audit_reports",
+             "audit.view_auditlog",
++            "products.change_taxconfiguration",
+         ]
+     )
+ )
+diff --git a/apps/core/context_processors.py b/apps/core/context_processors.py
+index b60af64..c58e69f 100644
+--- a/apps/core/context_processors.py
++++ b/apps/core/context_processors.py
+@@ -2,4 +2,7 @@ from django.conf import settings
+ 
+ 
+ def business(request):
+-    return {"BUSINESS": settings.BUSINESS}
++    from apps.products.models import TaxConfiguration
++
++    tax = TaxConfiguration.current()
++    return {"BUSINESS": {**settings.BUSINESS, "TAX_LABEL": tax.label, "TAX_ID": tax.registration_number}}
+diff --git a/apps/core/management/commands/seed_demo.py b/apps/core/management/commands/seed_demo.py
+index 9dc3a7c..98be29f 100644
+--- a/apps/core/management/commands/seed_demo.py
++++ b/apps/core/management/commands/seed_demo.py
+@@ -36,14 +36,26 @@ class Command(BaseCommand):
+         p.add_argument("--customers", type=int, default=50)
+         p.add_argument("--invoices", type=int, default=100)
+         p.add_argument("--seed", type=int, default=42)
++        p.add_argument(
++            "--tax-rate",
++            type=Decimal,
++            default=Decimal("0.00"),
++            help="Explicit sample product tax percentage (default: 0).",
++        )
+ 
+     @transaction.atomic
+     def handle(self, *args, **o):
++        if (
++            not o["tax_rate"].is_finite()
++            or not Decimal("0") <= o["tax_rate"] <= Decimal("100")
++            or o["tax_rate"].as_tuple().exponent < -2
++        ):
++            raise CommandError("Tax rate must be between 0 and 100 with at most two decimal places.")
+         if Product.objects.exists() and not o.get("force", False):
+             raise CommandError(
+                 "Database already has products; refusing to add demo data on top of real data."
+             )
+-        rnd = random.Random(o["seed"])
++        rnd = random.Random(o["seed"])  # nosec B311 - reproducible synthetic data, never credentials
+         sync_roles()
+         for username, role in (
+             ("demo_admin", ADMINISTRATOR),
+@@ -83,7 +95,7 @@ class Command(BaseCommand):
+                 cost_price=cost,
+                 selling_price=(cost * Decimal("1.35")).quantize(Decimal("0.01")),
+                 reorder_level=rnd.randint(5, 30),
+-                tax_rate=rnd.choice([Decimal("0"), Decimal("6"), Decimal("10")]),
++                tax_rate=o["tax_rate"],
+             )
+             apply_movement(
+                 p.pk,
+diff --git a/apps/core/money.py b/apps/core/money.py
+index 4373d36..d72ebec 100644
+--- a/apps/core/money.py
++++ b/apps/core/money.py
+@@ -14,7 +14,7 @@ ZERO = Decimal("0.00")
+ def to_decimal(value, default=None):
+     """Convert user input to Decimal, or return ``default`` when invalid."""
+     if isinstance(value, Decimal):
+-        return value
++        return value if value.is_finite() else default
+     if value is None or (isinstance(value, str) and not value.strip()):
+         return default
+     try:
+@@ -28,7 +28,15 @@ def to_decimal(value, default=None):
+ 
+ def q2(value) -> Decimal:
+     """Quantize to 2 decimal places, half-up."""
+-    return Decimal(value).quantize(CENT, rounding=ROUND_HALF_UP)
++    from apps.core.exceptions import BusinessRuleError
++
++    amount = to_decimal(value)
++    if amount is None:
++        raise BusinessRuleError("Enter a finite monetary amount.")
++    try:
++        return amount.quantize(CENT, rounding=ROUND_HALF_UP)
++    except InvalidOperation:
++        raise BusinessRuleError("The monetary amount is too large.") from None
+ 
+ 
+ def pct_of(amount, percent) -> Decimal:
+diff --git a/apps/customers/admin.py b/apps/customers/admin.py
+index cb1e193..06b50e7 100644
+--- a/apps/customers/admin.py
++++ b/apps/customers/admin.py
+@@ -1,6 +1,8 @@
+ from django.contrib import admin
+ 
++from apps.core.admin import HistoricalDocumentAdmin
++
+ from .models import Customer, LedgerEntry
+ 
+ admin.site.register(Customer)
+-admin.site.register(LedgerEntry)
++admin.site.register(LedgerEntry, HistoricalDocumentAdmin)
+diff --git a/apps/customers/forms.py b/apps/customers/forms.py
+index c287f2f..ba395b1 100644
+--- a/apps/customers/forms.py
++++ b/apps/customers/forms.py
+@@ -6,6 +6,11 @@ from .models import Customer, LedgerEntry
+ 
+ 
+ class CustomerForm(forms.ModelForm):
++    def __init__(self, *args, user=None, **kwargs):
++        super().__init__(*args, **kwargs)
++        if user is None or not user.has_perm("customers.override_credit_limit"):
++            self.fields.pop("credit_limit")
++
+     class Meta:
+         model = Customer
+         fields = [
+diff --git a/apps/customers/views.py b/apps/customers/views.py
+index 4637909..2fad487 100644
+--- a/apps/customers/views.py
++++ b/apps/customers/views.py
+@@ -94,7 +94,12 @@ class CustomerDetailView(AppPermissionMixin, DetailView):
+         return ctx
+ 
+ 
+-class CustomerCreateView(AppPermissionMixin, CreateView):
++class CustomerFormMixin:
++    def get_form_kwargs(self):
++        return {**super().get_form_kwargs(), "user": self.request.user}
++
++
++class CustomerCreateView(CustomerFormMixin, AppPermissionMixin, CreateView):
+     permission_required = "customers.add_customer"
+     model = Customer
+     form_class = CustomerForm
+@@ -108,7 +113,7 @@ class CustomerCreateView(AppPermissionMixin, CreateView):
+         return resp
+ 
+ 
+-class CustomerUpdateView(AppPermissionMixin, UpdateView):
++class CustomerUpdateView(CustomerFormMixin, AppPermissionMixin, UpdateView):
+     permission_required = "customers.change_customer"
+     model = Customer
+     form_class = CustomerForm
+diff --git a/apps/inventory/services.py b/apps/inventory/services.py
+index 68fff55..4480e5c 100644
+--- a/apps/inventory/services.py
++++ b/apps/inventory/services.py
+@@ -108,6 +108,14 @@ def apply_stocktake(stocktake_id, user):
+         if line.counted_quantity is None:
+             continue
+         product = Product.objects.select_for_update().get(pk=line.product_id)
++        if (
++            product.stock_on_hand != line.system_quantity
++            or product.movements.filter(created_at__gt=st.created_at).exists()
++        ):
++            raise BusinessRuleError(
++                f"{product.name}: stock moved after this stock-take started. "
++                "Start a new count with stock movements paused; nothing was applied."
++            )
+         delta = line.counted_quantity - product.stock_on_hand  # vs LIVE stock, not the snapshot
+         if delta:
+             apply_movement(
+@@ -127,6 +135,29 @@ def apply_stocktake(stocktake_id, user):
+     return posted
+ 
+ 
++@transaction.atomic
++def save_stocktake_counts(stocktake_id, counts, *, user, apply=False):
++    """Save a complete submitted count batch under the same lock as application.
++
++    Validate every value before saving any, and prevent stale forms from editing
++    a count that another request already applied.
++    """
++    st = StockTake.objects.select_for_update().get(pk=stocktake_id)
++    if st.status != StockTake.Status.DRAFT:
++        raise BusinessRuleError("This stock-take was already applied.")
++    changed = []
++    for line in st.lines.all():
++        raw = str(counts.get(line.pk, "")).strip()
++        if not raw:
++            continue
++        if not raw.isascii() or not raw.isdigit() or int(raw) > 2147483647:
++            raise BusinessRuleError(f"Invalid count for line {line.pk}; use a non-negative whole number.")
++        line.counted_quantity = int(raw)
++        changed.append(line)
++    st.lines.model.objects.bulk_update(changed, ["counted_quantity"])
++    return apply_stocktake(st.pk, user) if apply else None
++
++
+ def reconcile():
+     """Compare each product's running balance with its movement ledger.
+     Returns a list of (product, ledger_sum, stock_on_hand) mismatches."""
+diff --git a/apps/inventory/views.py b/apps/inventory/views.py
+index d581cd6..55e2404 100644
+--- a/apps/inventory/views.py
++++ b/apps/inventory/views.py
+@@ -17,7 +17,7 @@ from apps.products.models import Product
+ 
+ from . import services
+ from .forms import AdjustmentForm, StockTakeForm
+-from .models import StockMovement, StockTake, StockTakeLine
++from .models import StockMovement, StockTake
+ 
+ 
+ class StockFilter(df.FilterSet):
+@@ -194,26 +194,20 @@ class StockTakeView(AppPermissionMixin, View):
+ 
+             raise PermissionDenied
+         st = get_object_or_404(StockTake, pk=pk)
+-        if st.status != StockTake.Status.DRAFT:
+-            messages.error(request, "This stock take was already applied.")
+-            return redirect("inventory:stocktake", pk=pk)
+-        for line in st.lines.all():
+-            raw = request.POST.get(f"count_{line.pk}", "").strip()
+-            if raw == "":
+-                continue
+-            if not raw.isdigit():
+-                messages.error(request, f"Invalid count for line {line.pk}.")
+-                return redirect("inventory:stocktake", pk=pk)
+-            StockTakeLine.objects.filter(pk=line.pk).update(counted_quantity=int(raw))
+-        if "apply" in request.POST:
+-            try:
+-                n = services.apply_stocktake(pk, request.user)
+-            except BusinessRuleError as exc:
+-                messages.error(request, str(exc))
+-            else:
+-                messages.success(request, f"Stock take applied: {n} correction(s) posted.")
++        try:
++            n = services.save_stocktake_counts(
++                pk,
++                {line.pk: request.POST.get(f"count_{line.pk}", "") for line in st.lines.all()},
++                user=request.user,
++                apply="apply" in request.POST,
++            )
++        except BusinessRuleError as exc:
++            messages.error(request, str(exc))
+         else:
+-            messages.success(request, "Counts saved.")
++            messages.success(
++                request,
++                f"Stock take applied: {n} correction(s) posted." if n is not None else "Counts saved.",
++            )
+         return redirect("inventory:stocktake", pk=pk)
+ 
+ 
+diff --git a/apps/payments/services.py b/apps/payments/services.py
+index 43945de..2c86d92 100644
+--- a/apps/payments/services.py
++++ b/apps/payments/services.py
+@@ -6,13 +6,15 @@ retried request (double click, network retry) return the original payment
+ instead of recording a second one.
+ """
+ 
+-from django.db import transaction
+-from django.db.models import Sum
++from django.db import IntegrityError, transaction
++from django.db.models import F, Q, Sum
++from django.db.models.functions import Coalesce
+ from django.utils import timezone
+ 
+ from apps.audit.services import log as audit_log
+ from apps.core.exceptions import BusinessRuleError
+ from apps.core.money import ZERO, q2
++from apps.customers.models import Customer
+ from apps.customers.services import post_ledger_entry
+ from apps.sales.models import Invoice
+ 
+@@ -41,17 +43,26 @@ def recalculate_invoice(invoice: Invoice) -> Invoice:
+     invoice.total_paid = paid - refunded
+     if invoice.status != Invoice.Status.CANCELLED:
+         effective = invoice.total - invoice.returned_total
+-        # shipping is not refundable, so "fully returned" = all goods value credited
+-        if invoice.returned_total > 0 and invoice.returned_total >= invoice.total - invoice.shipping_charge:
+-            invoice.status = Invoice.Status.RETURNED
++        # Return completion follows goods quantities, including zero-price lines.
++        # Crediting all monetary value can still leave free goods with the customer.
++        fully_returned = invoice.returns.filter(status="approved").exists() and not (
++            invoice.lines.annotate(
++                units_returned=Coalesce(
++                    Sum("return_lines__quantity", filter=Q(return_lines__sales_return__status="approved")), 0
++                )
++            )
++            .filter(units_returned__lt=F("quantity"))
++            .exists()
++        )
++        if invoice.total_paid >= effective:
+             invoice.payment_status = Invoice.PaymentStatus.PAID
++        elif invoice.total_paid > 0:
++            invoice.payment_status = Invoice.PaymentStatus.PARTIAL
++        else:
++            invoice.payment_status = Invoice.PaymentStatus.UNPAID
++        if fully_returned:
++            invoice.status = Invoice.Status.RETURNED
+         else:
+-            if invoice.total_paid >= effective:
+-                invoice.payment_status = Invoice.PaymentStatus.PAID
+-            elif invoice.total_paid > 0:
+-                invoice.payment_status = Invoice.PaymentStatus.PARTIAL
+-            else:
+-                invoice.payment_status = Invoice.PaymentStatus.UNPAID
+             invoice.status = (
+                 Invoice.Status.COMPLETED
+                 if invoice.payment_status == Invoice.PaymentStatus.PAID
+@@ -67,6 +78,38 @@ def _next_receipt_no():
+     return f"RCT-{DocumentSequence.next_value('receipt'):06d}"
+ 
+ 
++def _replayed_payment(key, invoice_id, kind, amount, method, reference):
++    if not key:
++        return None
++    existing = Payment.objects.filter(idempotency_key=key).first()
++    if existing and (
++        existing.invoice_id != invoice_id
++        or existing.kind != kind
++        or existing.amount != amount
++        or existing.method != method
++        or existing.reference != reference[:100]
++    ):
++        raise BusinessRuleError("This payment token was already used for a different operation.")
++    return existing
++
++
++def _create_payment(**fields):
++    invoice = fields["invoice"]
++    if invoice.customer_id:
++        # Customer locks precede receipt sequences in invoice creation too.
++        Customer.objects.select_for_update().get(pk=invoice.customer_id)
++    try:
++        with transaction.atomic():
++            return Payment.objects.create(receipt_no=_next_receipt_no(), **fields)
++    except IntegrityError:
++        key = fields.get("idempotency_key")
++        if key and Payment.objects.filter(idempotency_key=key).exists():
++            raise BusinessRuleError(
++                "This payment token was already used for a different operation."
++            ) from None
++        raise
++
++
+ @transaction.atomic
+ def record_payment(
+     invoice_id,
+@@ -82,30 +125,28 @@ def record_payment(
+ ):
+     """Record a customer payment. ``invoice`` may be passed when the caller already
+     holds the lock (invoice creation)."""
+-    if idempotency_key:
+-        existing = Payment.objects.filter(idempotency_key=idempotency_key).first()
+-        if existing:
+-            return existing, False
+     amount = q2(amount)
+     if amount <= 0:
+         raise BusinessRuleError("Payment amount must be greater than zero.")
+     if method not in Payment.Method.values:
+         raise BusinessRuleError("Unknown payment method.")
+     invoice = invoice or lock_invoice(invoice_id)
+-    if invoice.status in (Invoice.Status.CANCELLED, Invoice.Status.RETURNED):
++    existing = _replayed_payment(idempotency_key, invoice.pk, Payment.Kind.PAYMENT, amount, method, reference)
++    if existing:
++        return existing, False
++    if invoice.status == Invoice.Status.CANCELLED:
+         raise BusinessRuleError(
+             f"Invoice {invoice.number} is {invoice.get_status_display().lower()}; it cannot take payments."
+         )
+     if amount > invoice.balance_due:
+         raise BusinessRuleError(f"Payment {amount} exceeds the outstanding balance {invoice.balance_due}.")
+-    payment = Payment.objects.create(
++    payment = _create_payment(
+         invoice=invoice,
+         customer=invoice.customer,
+         kind=Payment.Kind.PAYMENT,
+         amount=amount,
+         method=method,
+         reference=reference[:100],
+-        receipt_no=_next_receipt_no(),
+         paid_on=paid_on or timezone.localdate(),
+         idempotency_key=idempotency_key or None,
+         notes=notes[:255],
+@@ -129,10 +170,20 @@ def record_payment(
+ def reverse_payment(payment_id, *, user, reason):
+     if not reason.strip():
+         raise BusinessRuleError("A reason is required to reverse a payment.")
++    # All payment operations take the invoice lock before the payment lock.
++    invoice_id = Payment.objects.only("invoice_id").get(pk=payment_id).invoice_id
++    invoice = lock_invoice(invoice_id)
+     payment = Payment.objects.select_for_update().get(pk=payment_id)
+-    invoice = lock_invoice(payment.invoice_id)
+     if payment.status != Payment.Status.COMPLETED:
+         raise BusinessRuleError("Only completed payments can be reversed.")
++    if invoice.status == Invoice.Status.CANCELLED:
++        raise BusinessRuleError("Payments on a cancelled invoice cannot be reversed.")
++    if payment.kind == Payment.Kind.PAYMENT and payment.amount > invoice.total_paid:
++        raise BusinessRuleError(
++            "Reverse the related refunds first; this reversal would make net receipts negative."
++        )
++    if payment.kind == Payment.Kind.REFUND and invoice.total_paid + payment.amount > invoice.effective_total:
++        raise BusinessRuleError("This refund reversal would overpay the invoice.")
+     payment.status = Payment.Status.REVERSED
+     payment.reversed_at = timezone.now()
+     payment.reversed_by = user
+@@ -159,24 +210,26 @@ def issue_refund(
+     invoice_id, *, amount, method, user, reference="", notes="", invoice=None, idempotency_key=None
+ ):
+     """Pay money back to the customer. Cannot exceed what the invoice has net received."""
+-    if idempotency_key:
+-        existing = Payment.objects.filter(idempotency_key=idempotency_key).first()
+-        if existing:
+-            return existing
+     amount = q2(amount)
+     if amount <= 0:
+         raise BusinessRuleError("Refund amount must be greater than zero.")
+     invoice = invoice or lock_invoice(invoice_id)
++    if method not in Payment.Method.values:
++        raise BusinessRuleError("Unknown payment method.")
++    existing = _replayed_payment(idempotency_key, invoice.pk, Payment.Kind.REFUND, amount, method, reference)
++    if existing:
++        return existing
++    if invoice.status == Invoice.Status.CANCELLED:
++        raise BusinessRuleError("A cancelled invoice cannot be refunded.")
+     if amount > invoice.total_paid:
+         raise BusinessRuleError(f"Refund {amount} exceeds the amount received ({invoice.total_paid}).")
+-    refund = Payment.objects.create(
++    refund = _create_payment(
+         invoice=invoice,
+         customer=invoice.customer,
+         kind=Payment.Kind.REFUND,
+         amount=amount,
+         method=method,
+         reference=reference[:100],
+-        receipt_no=_next_receipt_no(),
+         paid_on=timezone.localdate(),
+         notes=notes[:255],
+         created_by=user,
+diff --git a/apps/payments/views.py b/apps/payments/views.py
+index 61c5487..94d38b4 100644
+--- a/apps/payments/views.py
++++ b/apps/payments/views.py
+@@ -89,7 +89,10 @@ class PaymentExportView(AppPermissionMixin, View):
+     permission_required = "payments.view_payment"
+ 
+     def get(self, request):
+-        qs = PaymentFilter(request.GET or None, queryset=Payment.objects.select_related("invoice")).qs
++        base = Payment.objects.select_related("invoice")
++        if not request.user.has_perm("payments.view_refund"):
++            base = base.filter(kind=Payment.Kind.PAYMENT)
++        qs = PaymentFilter(request.GET or None, queryset=base).qs
+         rows = [
+             (
+                 p.paid_on,
+diff --git a/apps/products/forms.py b/apps/products/forms.py
+index 13e5f95..08e7e85 100644
+--- a/apps/products/forms.py
++++ b/apps/products/forms.py
+@@ -2,7 +2,7 @@ from decimal import Decimal
+ 
+ from django import forms
+ 
+-from .models import Brand, Category, Product
++from .models import Brand, Category, Product, TaxConfiguration
+ 
+ 
+ class ProductForm(forms.ModelForm):
+@@ -46,6 +46,11 @@ class ProductForm(forms.ModelForm):
+         self.user = user
+         if self.instance.pk:
+             del self.fields["opening_stock"]
++        else:
++            self.fields["tax_rate"].initial = TaxConfiguration.current().default_rate
++        self.fields[
++            "tax_rate"
++        ].help_text = "Added to the selling price after discounts. Manage rates under Tax."
+         if user is not None and not user.has_perm("products.view_cost_price"):
+             # staff without the permission can neither see nor change purchase costs
+             del self.fields["cost_price"]
+diff --git a/apps/products/importers.py b/apps/products/importers.py
+index 9b4a806..8a10510 100644
+--- a/apps/products/importers.py
++++ b/apps/products/importers.py
+@@ -9,7 +9,7 @@ from apps.inventory.models import StockMovement
+ from apps.inventory.services import apply_movement
+ from apps.suppliers.models import Supplier
+ 
+-from .models import Category, Product
++from .models import Category, Product, TaxConfiguration
+ 
+ 
+ def _dec(value, field, errors, default=None, minimum=Decimal("0")):
+@@ -43,9 +43,12 @@ class ProductImporter(BaseImporter):
+     )
+ 
+     def build_context(self, mode):
++        products = list(Product.objects.only("sku", "tax_rate"))
+         return {
+-            "skus": {p.sku.lower(): p.pk for p in Product.objects.only("sku")},
++            "skus": {p.sku.lower(): p.pk for p in products},
++            "tax_rates": {p.pk: p.tax_rate for p in products},
+             "suppliers": set(Supplier.objects.values_list("pk", flat=True)),
++            "default_tax_rate": TaxConfiguration.current().default_rate,
+         }
+ 
+     def identity(self, data):
+@@ -63,7 +66,10 @@ class ProductImporter(BaseImporter):
+         if price is None and not errors:
+             errors.append("selling_price is required.")
+         cost = _dec(row.get("cost_price"), "cost_price", errors, Decimal("0.00"))
+-        tax = _dec(row.get("tax_rate"), "tax_rate", errors, Decimal("0.00"))
++        tax_default = ctx.get("default_tax_rate", Decimal("0.00"))
++        if mode == "update" and sku.lower() in ctx["skus"] and row.get("tax_rate") in ("", None):
++            tax_default = ctx["tax_rates"][ctx["skus"][sku.lower()]]
++        tax = _dec(row.get("tax_rate"), "tax_rate", errors, tax_default)
+         if tax is not None and tax > 100:
+             errors.append("tax_rate: must be at most 100.")
+         qty_raw = (row.get("quantity") or "").strip()
+diff --git a/apps/products/models.py b/apps/products/models.py
+index 1dff626..f38daa0 100644
+--- a/apps/products/models.py
++++ b/apps/products/models.py
+@@ -10,6 +10,41 @@ from apps.core.models import TimeStampedModel
+ from .validators import validate_image_upload
+ 
+ 
++class TaxConfiguration(TimeStampedModel):
++    label = models.CharField(max_length=40, default="Tax")
++    registration_number = models.CharField(max_length=80, blank=True)
++    default_rate = models.DecimalField(
++        max_digits=5,
++        decimal_places=2,
++        default=Decimal("0.00"),
++        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
++        help_text="Used for new products. Existing products and invoices keep their saved rates.",
++    )
++
++    class Meta:
++        constraints = [
++            models.CheckConstraint(condition=models.Q(pk=1), name="tax_configuration_singleton"),
++            models.CheckConstraint(
++                condition=models.Q(default_rate__gte=0) & models.Q(default_rate__lte=100),
++                name="tax_default_0_100",
++            ),
++        ]
++
++    def __str__(self):
++        return f"{self.label} ({self.default_rate}%)"
++
++    @classmethod
++    def current(cls):
++        from django.conf import settings
++
++        return cls.objects.filter(pk=1).first() or cls(
++            pk=1,
++            label=settings.BUSINESS["TAX_LABEL"],
++            registration_number=settings.BUSINESS["TAX_ID"],
++            default_rate=Decimal(settings.TAX_DEFAULT_RATE),
++        )
++
++
+ class Category(models.Model):
+     name = models.CharField(max_length=100)
+ 
+diff --git a/apps/products/views.py b/apps/products/views.py
+index 92f0a2f..29d3c8c 100644
+--- a/apps/products/views.py
++++ b/apps/products/views.py
+@@ -10,6 +10,7 @@ from django.views.generic import CreateView, DetailView, ListView, UpdateView
+ 
+ from apps.audit.services import log as audit_log
+ from apps.core.csvutil import csv_response
++from apps.core.exceptions import BusinessRuleError
+ from apps.core.import_views import ImportPreviewView, ImportUploadView
+ from apps.core.mixins import AppPermissionMixin, FilteredListView
+ from apps.core.money import q2
+@@ -152,7 +153,7 @@ class ProductBulkView(AppPermissionMixin, View):
+             try:
+                 for p in products:
+                     self._apply(p, action, value)
+-            except (ValueError, InvalidOperation, Category.DoesNotExist) as exc:
++            except (BusinessRuleError, ValueError, InvalidOperation, Category.DoesNotExist) as exc:
+                 transaction.set_rollback(True)
+                 messages.error(request, f"Bulk update failed: {exc or 'invalid value'}. Nothing was changed.")
+                 return redirect("products:list")
+@@ -266,10 +267,10 @@ class ProductSearchView(AppPermissionMixin, View):
+ 
+     def get(self, request):
+         q = request.GET.get("q", "").strip()
++        from django.db.models import Case, IntegerField, Q, Value, When
++
+         qs = Product.objects.filter(is_active=True)
+         if q:
+-            from django.db.models import Q
+-
+             qs = qs.filter(Q(name__icontains=q) | Q(sku__icontains=q) | Q(barcode=q))
+         else:
+             qs = qs.none()
+@@ -285,7 +286,13 @@ class ProductSearchView(AppPermissionMixin, View):
+                         "stock": p.stock_on_hand,
+                         "unit": p.unit,
+                     }
+-                    for p in qs.order_by("name")[:12]
++                    for p in qs.annotate(
++                        exact_match=Case(
++                            When(Q(barcode=q) | Q(sku__iexact=q), then=Value(0)),
++                            default=Value(1),
++                            output_field=IntegerField(),
++                        )
++                    ).order_by("exact_match", "name", "pk")[:12]
+                 ]
+             }
+         )
+diff --git a/apps/purchasing/admin.py b/apps/purchasing/admin.py
+index e4468c3..5dfbac5 100644
+--- a/apps/purchasing/admin.py
++++ b/apps/purchasing/admin.py
+@@ -1,6 +1,8 @@
+ from django.contrib import admin
+ 
++from apps.core.admin import HistoricalDocumentAdmin
++
+ from .models import GoodsReceipt, PurchaseOrder, SupplierInvoice, SupplierPayment
+ 
+ for m in (PurchaseOrder, GoodsReceipt, SupplierInvoice, SupplierPayment):
+-    admin.site.register(m)
++    admin.site.register(m, HistoricalDocumentAdmin)
+diff --git a/apps/purchasing/services.py b/apps/purchasing/services.py
+index 15ff242..8e94881 100644
+--- a/apps/purchasing/services.py
++++ b/apps/purchasing/services.py
+@@ -2,14 +2,14 @@
+ 
+ from decimal import Decimal
+ 
+-from django.db import transaction
++from django.db import IntegrityError, transaction
+ from django.db.models import F
+ from django.utils import timezone
+ 
+ from apps.audit.services import log as audit_log
+ from apps.core.exceptions import BusinessRuleError
+ from apps.core.models import DocumentSequence
+-from apps.core.money import q2
++from apps.core.money import q2, to_decimal
+ from apps.inventory.models import StockMovement
+ from apps.inventory.services import apply_movement
+ from apps.products.models import Product
+@@ -25,6 +25,59 @@ from .models import (
+ )
+ 
+ 
++def _validated_lines(lines, *, order=False):
++    if not lines:
++        raise BusinessRuleError("Add at least one product line.")
++    result, seen = [], set()
++    for source in lines:
++        ln = dict(source)
++        qty = to_decimal(ln["quantity"])
++        if qty is None or qty != qty.to_integral_value() or not 0 < qty <= 2147483647:
++            raise BusinessRuleError("Quantities must be positive whole numbers.")
++        ln["quantity"] = int(qty)
++        ln["unit_cost"] = q2(ln["unit_cost"])
++        if ln["unit_cost"] < 0:
++            raise BusinessRuleError("Unit cost cannot be negative.")
++        if not ln["product"].is_active:
++            raise BusinessRuleError("Archived products cannot be purchased.")
++        if order:
++            if ln["product"].pk in seen:
++                raise BusinessRuleError("Use one line per product on a purchase order.")
++            seen.add(ln["product"].pk)
++            ln["discount"] = q2(ln.get("discount", 0))
++            rate = to_decimal(ln.get("tax_rate", 0))
++            if rate is None or not 0 <= rate <= 100:
++                raise BusinessRuleError("Tax rate must be between 0 and 100.")
++            ln["tax_rate"] = rate
++            if not 0 <= ln["discount"] <= ln["unit_cost"] * ln["quantity"]:
++                raise BusinessRuleError("Line discount must be within the line amount.")
++        result.append(ln)
++    return result
++
++
++def _validate_supplier(supplier, purchase_order=None, receipt=None):
++    if not supplier.is_active:
++        raise BusinessRuleError("This supplier is inactive.")
++    if purchase_order and purchase_order.supplier_id != supplier.pk:
++        raise BusinessRuleError("The purchase order belongs to a different supplier.")
++    if receipt:
++        if receipt.supplier_id != supplier.pk:
++            raise BusinessRuleError("The goods receipt belongs to a different supplier.")
++        if receipt.status != GoodsReceipt.Status.CONFIRMED:
++            raise BusinessRuleError("Confirm the goods receipt before recording its supplier invoice.")
++        if purchase_order and receipt.purchase_order_id != purchase_order.pk:
++            raise BusinessRuleError("The goods receipt belongs to a different purchase order.")
++
++
++def _validate_receipt_line(ln, purchase_order):
++    pol = ln.get("po_line")
++    if purchase_order:
++        if not pol or pol.order_id != purchase_order.pk or pol.product_id != ln["product"].pk:
++            raise BusinessRuleError("Every receipt line must match a product line on its purchase order.")
++    elif pol:
++        raise BusinessRuleError("A purchase order is required for linked receipt lines.")
++
++
+ def next_number(prefix, name=None, width=6):
+     return f"{prefix}-{DocumentSequence.next_value(name or prefix):0{width}d}"
+ 
+@@ -47,8 +100,14 @@ def create_purchase_order(
+     discount=Decimal("0.00"),
+     status=PurchaseOrder.Status.ORDERED,
+ ):
+-    if not lines:
+-        raise BusinessRuleError("A purchase order needs at least one line.")
++    lines = _validated_lines(lines, order=True)
++    _validate_supplier(supplier)
++    discount = q2(discount)
++    subtotal = sum((ln["unit_cost"] * ln["quantity"] - ln["discount"] for ln in lines), Decimal(0))
++    if not 0 <= discount <= subtotal:
++        raise BusinessRuleError("Order discount must be within the subtotal.")
++    if status not in (PurchaseOrder.Status.DRAFT, PurchaseOrder.Status.ORDERED):
++        raise BusinessRuleError("New purchase orders must be draft or ordered.")
+     po = PurchaseOrder.objects.create(
+         number=next_number("PO"),
+         supplier=supplier,
+@@ -70,8 +129,10 @@ def create_receipt(
+     *, supplier, receipt_date, lines, user, purchase_order=None, delivery_note="", comments=""
+ ):
+     """Create a DRAFT receipt. Stock is NOT touched until ``confirm_receipt``."""
+-    if not lines:
+-        raise BusinessRuleError("A receipt needs at least one line.")
++    lines = _validated_lines(lines)
++    _validate_supplier(supplier, purchase_order)
++    for ln in lines:
++        _validate_receipt_line(ln, purchase_order)
+     receipt = GoodsReceipt.objects.create(
+         number=next_number("GRN"),
+         supplier=supplier,
+@@ -103,6 +164,10 @@ def confirm_receipt(receipt_id, user):
+             raise BusinessRuleError(
+                 f"Purchase order {po.number} is {po.get_status_display().lower()} and cannot be received."
+             )
++    _validate_supplier(receipt.supplier, po)
++    for ln in lines:
++        _validated_lines([{"product": ln.product, "quantity": ln.quantity, "unit_cost": ln.unit_cost}])
++        _validate_receipt_line({"product": ln.product, "po_line": ln.po_line}, po)
+     for ln in lines:
+         if ln.po_line_id:
+             pol = PurchaseOrderLine.objects.select_for_update().get(pk=ln.po_line_id)
+@@ -161,8 +226,13 @@ def record_supplier_invoice(
+     notes="",
+ ):
+     """Record the supplier's bill. Does not move stock and does not pay anything."""
+-    if not lines:
+-        raise BusinessRuleError("A supplier invoice needs at least one line.")
++    lines = _validated_lines(lines)
++    if receipt:
++        receipt = GoodsReceipt.objects.select_for_update().get(pk=receipt.pk)
++    purchase_order = purchase_order or (receipt.purchase_order if receipt else None)
++    _validate_supplier(supplier, purchase_order, receipt)
++    if invoice_number and SupplierInvoice.objects.filter(invoice_number=invoice_number).exists():
++        raise BusinessRuleError("A supplier invoice with this number already exists.")
+     total = q2(sum((Decimal(ln["unit_cost"]) * ln["quantity"] for ln in lines), Decimal(0)))
+     inv = SupplierInvoice.objects.create(
+         invoice_number=invoice_number or next_supplier_invoice_number(),
+@@ -212,26 +282,44 @@ def quick_receive(*, product, quantity, user, unit_cost=None, comments=""):
+ @transaction.atomic
+ def pay_supplier_invoice(invoice_id, *, amount, method, paid_on, user, reference="", idempotency_key=None):
+     amount = q2(amount)
++    inv = SupplierInvoice.objects.select_for_update().get(pk=invoice_id)
++    if method not in SupplierPayment.Method.values:
++        raise BusinessRuleError("Unknown payment method.")
+     if idempotency_key:
+         existing = SupplierPayment.objects.filter(idempotency_key=idempotency_key).first()
+         if existing:
+-            return existing  # network retry / double submit: no second payment
+-    inv = SupplierInvoice.objects.select_for_update().get(pk=invoice_id)
++            if (
++                existing.invoice_id,
++                existing.amount,
++                existing.method,
++                existing.reference,
++                existing.paid_on,
++            ) != (inv.pk, amount, method, reference, paid_on):
++                raise BusinessRuleError("This payment token was already used for a different operation.")
++            return existing
+     if inv.status == SupplierInvoice.Status.CANCELLED:
+         raise BusinessRuleError("Cannot pay a cancelled supplier invoice.")
+     if amount <= 0:
+         raise BusinessRuleError("Payment amount must be greater than zero.")
+     if amount > inv.balance:
+         raise BusinessRuleError(f"Payment {amount} exceeds the outstanding balance {inv.balance}.")
+-    payment = SupplierPayment.objects.create(
+-        invoice=inv,
+-        amount=amount,
+-        method=method,
+-        reference=reference,
+-        paid_on=paid_on,
+-        idempotency_key=idempotency_key,
+-        created_by=user,
+-    )
++    try:
++        with transaction.atomic():
++            payment = SupplierPayment.objects.create(
++                invoice=inv,
++                amount=amount,
++                method=method,
++                reference=reference,
++                paid_on=paid_on,
++                idempotency_key=idempotency_key or None,
++                created_by=user,
++            )
++    except IntegrityError:
++        if idempotency_key and SupplierPayment.objects.filter(idempotency_key=idempotency_key).exists():
++            raise BusinessRuleError(
++                "This payment token was already used for a different operation."
++            ) from None
++        raise
+     inv.paid_amount = inv.paid_amount + amount
+     inv.payment_status = (
+         SupplierInvoice.PaymentStatus.PAID
+diff --git a/apps/purchasing/views.py b/apps/purchasing/views.py
+index deb14f5..43a17c8 100644
+--- a/apps/purchasing/views.py
++++ b/apps/purchasing/views.py
+@@ -297,7 +297,7 @@ class ReceiptConfirmView(AppPermissionMixin, View):
+ class QuickReceiveView(AppPermissionMixin, View):
+     """Legacy ``/add_item``: add stock for one product and book the supplier invoice."""
+ 
+-    permission_required = "purchasing.receive_goods"
++    permission_required = ("purchasing.receive_goods", "purchasing.add_supplierinvoice")
+ 
+     def get(self, request, product_id):
+         product = get_object_or_404(Product, pk=product_id)
+diff --git a/apps/reports/queries.py b/apps/reports/queries.py
+index f7dbdcb..e2ad9a2 100644
+--- a/apps/reports/queries.py
++++ b/apps/reports/queries.py
+@@ -209,6 +209,8 @@ def sales_by(d_from, d_to, dimension="product", limit=None, order="revenue"):
+         "chart": ([str(r[0])[:12] for r in rows[:12]], [r[off + 1] for r in rows[:12]]),
+         "notes": [
+             "Revenue is after line and invoice discounts, before tax.",
++            "These are original sales figures. Return credits and damaged-return costs are not netted "
++            "into this breakdown or profit estimate; review the returns and net invoiced sales reports separately.",
+             "Cost uses the cost price captured when each item was sold. Legacy (migrated) invoices use "
+             "the product's current cost, so their profit is an estimate. Net profit is not calculated "
+             "because no operating expenses are recorded.",
+diff --git a/apps/returns/admin.py b/apps/returns/admin.py
+index 57e7430..8285e34 100644
+--- a/apps/returns/admin.py
++++ b/apps/returns/admin.py
+@@ -1,5 +1,7 @@
+ from django.contrib import admin
+ 
++from apps.core.admin import HistoricalDocumentAdmin
++
+ from .models import SalesReturn
+ 
+-admin.site.register(SalesReturn)
++admin.site.register(SalesReturn, HistoricalDocumentAdmin)
+diff --git a/apps/returns/services.py b/apps/returns/services.py
+index b1561a1..012425a 100644
+--- a/apps/returns/services.py
++++ b/apps/returns/services.py
+@@ -42,6 +42,9 @@ def request_return(*, invoice_id, lines, reason, user, return_date=None):
+     lines = [ln for ln in lines if ln["quantity"]]
+     if not lines:
+         raise BusinessRuleError("Select at least one item to return.")
++    ids = [ln["invoice_line_id"] for ln in lines]
++    if len(ids) != len(set(ids)):
++        raise BusinessRuleError("Select each invoice line only once per return.")
+     ret = SalesReturn.objects.create(
+         number=f"RET-{DocumentSequence.next_value('return'):06d}",
+         invoice=invoice,
+@@ -52,8 +55,8 @@ def request_return(*, invoice_id, lines, reason, user, return_date=None):
+     for ln in lines:
+         il = InvoiceLine.objects.select_for_update().get(pk=ln["invoice_line_id"], invoice=invoice)
+         qty = int(ln["quantity"])
+-        if qty <= 0:
+-            raise BusinessRuleError("Return quantities must be positive.")
++        if qty != ln["quantity"] or qty <= 0:
++            raise BusinessRuleError("Return quantities must be positive whole numbers.")
+         already = returned_quantity(il.pk)
+         if already + qty > il.quantity:
+             raise BusinessRuleError(
+@@ -79,6 +82,11 @@ def approve_return(return_id, *, user, refund_method=None, note=""):
+     if invoice.status == Invoice.Status.CANCELLED:
+         raise BusinessRuleError("The invoice was cancelled; reject this return instead.")
+     lines = list(ret.lines.select_related("invoice_line__product").order_by("invoice_line__product_id", "id"))
++    ids = [ln.invoice_line_id for ln in lines]
++    if len(ids) != len(set(ids)):
++        raise BusinessRuleError(
++            "This return repeats an invoice line; reject it and request a corrected return."
++        )
+     products = lock_products([ln.invoice_line.product_id for ln in lines])
+     credit_total = ZERO
+     for ln in lines:
+@@ -126,6 +134,10 @@ def approve_return(return_id, *, user, refund_method=None, note=""):
+             invoice=invoice,
+             description=f"Return credit {ret.number} - Invoice #{invoice.number}",
+         )
++    # Make the approved quantities available to invoice recalculation inside this
++    # transaction. Any validation/refund failure rolls this status back as well.
++    ret.status = SalesReturn.Status.APPROVED
++    ret.save(update_fields=["status"])
+     # money owed back = what the customer paid beyond the invoice's new effective total
+     refund_due = max(ZERO, invoice.total_paid - invoice.effective_total)
+     refunded = ZERO
+diff --git a/apps/sales/admin.py b/apps/sales/admin.py
+index a2ab8a2..70a2c94 100644
+--- a/apps/sales/admin.py
++++ b/apps/sales/admin.py
+@@ -1,12 +1,11 @@
+ from django.contrib import admin
+ 
++from apps.core.admin import HistoricalDocumentAdmin
++
+ from .models import Invoice
+ 
+ 
+ @admin.register(Invoice)
+-class InvoiceAdmin(admin.ModelAdmin):
++class InvoiceAdmin(HistoricalDocumentAdmin):
+     list_display = ("number", "customer_name", "date", "total", "status", "payment_status")
+     search_fields = ("number", "customer_name", "customer_mobile")
+-
+-    def has_delete_permission(self, request, obj=None):
+-        return False  # historical financial records are never deleted
+diff --git a/apps/sales/calculations.py b/apps/sales/calculations.py
+index 0952b08..2833592 100644
+--- a/apps/sales/calculations.py
++++ b/apps/sales/calculations.py
+@@ -99,6 +99,7 @@ def compute_invoice(lines, *, discount_percent=ZERO, discount_amount=None, shipp
+ 
+     # allocate the invoice discount across lines, last line takes the remainder
+     remaining = disc_total
++    remaining_net = subtotal
+     for idx, r in enumerate(results):
+         if idx == len(results) - 1:
+             alloc = remaining
+@@ -106,6 +107,8 @@ def compute_invoice(lines, *, discount_percent=ZERO, discount_amount=None, shipp
+             alloc = min(q2(disc_total * r.net / subtotal), remaining)
+         else:
+             alloc = ZERO
++        remaining_net -= r.net
++        alloc = max(min(alloc, r.net), remaining - remaining_net)
+         r.allocated_discount = alloc
+         remaining -= alloc
+         r.taxable = r.net - alloc
+diff --git a/apps/sales/models.py b/apps/sales/models.py
+index 212e8a8..ecad394 100644
+--- a/apps/sales/models.py
++++ b/apps/sales/models.py
+@@ -48,6 +48,8 @@ class Invoice(TimeStampedModel):
+     )
+     shipping_charge = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO)
+     tax_total = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO)
++    tax_label = models.CharField(max_length=40, default="Tax")
++    tax_registration_number = models.CharField(max_length=80, blank=True)
+     total = models.DecimalField(max_digits=12, decimal_places=2, help_text="Legacy final_amount")
+ 
+     total_paid = models.DecimalField(
+diff --git a/apps/sales/pdf.py b/apps/sales/pdf.py
+index cde0200..8b3c07f 100644
+--- a/apps/sales/pdf.py
++++ b/apps/sales/pdf.py
+@@ -25,6 +25,13 @@ def render_pdf(template, context) -> bytes:
+ 
+     css = (Path(settings.BASE_DIR) / "static" / "css" / "invoice.css").read_text(encoding="utf-8")
+     html = render_to_string(
+-        template, {**context, "logo_uri": logo_data_uri(), "for_pdf": True, "invoice_css": css}
++        template,
++        {
++            "BUSINESS": settings.BUSINESS,
++            **context,
++            "logo_uri": logo_data_uri(),
++            "for_pdf": True,
++            "invoice_css": css,
++        },
+     )
+     return HTML(string=html, url_fetcher=safe_fetcher()).write_pdf()
+diff --git a/apps/sales/services.py b/apps/sales/services.py
+index 1aade58..c3f92ff 100644
+--- a/apps/sales/services.py
++++ b/apps/sales/services.py
+@@ -25,6 +25,7 @@ from apps.customers.services import outstanding_for, post_ledger_entry
+ from apps.inventory.models import StockMovement
+ from apps.inventory.services import apply_movement, lock_products
+ from apps.payments.services import lock_invoice, recalculate_invoice, record_payment
++from apps.products.models import TaxConfiguration
+ 
+ from .calculations import LineInput, compute_invoice
+ from .models import Invoice, InvoiceLine
+@@ -89,6 +90,12 @@ def create_invoice(
+             raise BusinessRuleError("Quantities must be positive whole numbers.")
+         wanted[ln["product_id"]] += int(qty)
+     products = lock_products(wanted)
++    # A retry may have waited for the original sale's product locks. Recheck
++    # before testing the remaining stock (which may now be zero).
++    if submission_token:
++        existing = Invoice.objects.filter(submission_token=submission_token).first()
++        if existing:
++            return existing, False
+     missing = set(wanted) - set(products)
+     if missing:
+         raise BusinessRuleError("One or more products no longer exist.")
+@@ -128,24 +135,28 @@ def create_invoice(
+         raise BusinessRuleError("Invoice total must be greater than zero.")
+ 
+     # --- payments validated before anything is written ----------------------
+-    pay_total = q2(sum((Decimal(p["amount"]) for p in payments), ZERO))
++    payments = [{**p, "amount": q2(p["amount"])} for p in payments]
++    pay_total = sum((p["amount"] for p in payments), ZERO)
+     if any(Decimal(p["amount"]) <= 0 for p in payments):
+         raise BusinessRuleError("Every payment amount must be greater than zero.")
+     if pay_total > totals.total:
+         raise BusinessRuleError(f"Payments ({pay_total}) exceed the invoice total ({totals.total}).")
+ 
+     cust = _resolve_customer(customer, customer_mobile, customer_name, customer_address, customer_email)
++    # Lock before allocating document numbers, consistently for cash and credit sales.
++    # Re-read limits/activation so concurrent customer edits cannot use stale values.
++    cust = Customer.objects.select_for_update().get(pk=cust.pk)
+     if not cust.is_active:
+         raise BusinessRuleError(f"Customer {cust.name} is inactive.")
+     unpaid = totals.total - pay_total
+     if cust.credit_limit is not None and unpaid > 0 and not can_override_credit:
+-        Customer.objects.select_for_update().get(pk=cust.pk)
+         if outstanding_for(cust.pk) + unpaid > cust.credit_limit:
+             raise BusinessRuleError(
+                 f"This sale would exceed {cust.name}'s credit limit of {cust.credit_limit}."
+             )
+ 
+     # --- write ---------------------------------------------------------------
++    tax_configuration = TaxConfiguration.current()
+     invoice = Invoice(
+         number=_next_invoice_number(),
+         customer=cust,
+@@ -161,6 +172,8 @@ def create_invoice(
+         discount_amount=totals.discount_amount,
+         shipping_charge=totals.shipping,
+         tax_total=totals.tax_total,
++        tax_label=tax_configuration.label,
++        tax_registration_number=tax_configuration.registration_number,
+         total=totals.total,
+         submission_token=submission_token or None,
+     )
+@@ -243,7 +256,7 @@ def cancel_invoice(invoice_id, *, user, reason):
+     invoice = lock_invoice(invoice_id)
+     if invoice.status == Invoice.Status.CANCELLED:
+         raise BusinessRuleError("Invoice is already cancelled.")
+-    if invoice.returned_total > 0:
++    if invoice.returned_total > 0 or invoice.returns.filter(status="approved").exists():
+         raise BusinessRuleError("This invoice has returns; it cannot be cancelled.")
+     if invoice.total_paid > 0:
+         raise BusinessRuleError("Reverse or refund the payments received before cancelling.")
+diff --git a/apps/sales/views.py b/apps/sales/views.py
+index ba66b69..d2c9792 100644
+--- a/apps/sales/views.py
++++ b/apps/sales/views.py
+@@ -78,7 +78,7 @@ class InvoiceDetailView(AppPermissionMixin, DetailView):
+         )
+         ctx["cancel_form"] = CancelForm()
+         ctx["can_pay"] = (
+-            inv.status in (Invoice.Status.PENDING, Invoice.Status.COMPLETED)
++            inv.status != Invoice.Status.CANCELLED
+             and inv.balance_due > 0
+             and self.request.user.has_perm("payments.add_payment")
+         )
+diff --git a/apps/suppliers/views.py b/apps/suppliers/views.py
+index a5fa5f7..39d9a8b 100644
+--- a/apps/suppliers/views.py
++++ b/apps/suppliers/views.py
+@@ -52,6 +52,9 @@ class SupplierDetailView(AppPermissionMixin, DetailView):
+     def get_context_data(self, **kwargs):
+         ctx = super().get_context_data(**kwargs)
+         s = self.object
++        if not self.request.user.has_perm("purchasing.view_supplierinvoice"):
++            ctx["orders"] = s.purchase_orders.all()[:15]
++            return ctx
+         ctx["payable"] = s.invoices.exclude(status="Cancelled").aggregate(
+             t=Sum("total_amount"), p=Sum("paid_amount")
+         )
+diff --git a/config/urls.py b/config/urls.py
+index 498f299..a52981a 100644
+--- a/config/urls.py
++++ b/config/urls.py
+@@ -7,6 +7,7 @@ urlpatterns = [
+     path("", include("apps.core.urls")),
+     path("accounts/", include("apps.accounts.urls")),
+     path("products/", include("apps.products.urls")),
++    path("tax/", include("apps.products.tax_urls")),
+     path("inventory/", include("apps.inventory.urls")),
+     path("customers/", include("apps.customers.urls")),
+     path("suppliers/", include("apps.suppliers.urls")),
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 209e651..d2b1b4f 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -25,6 +25,7 @@ services:
+     environment:
+       DATABASE_URL: postgres://${POSTGRES_USER:-retail}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-retail}
+       MEDIA_ROOT: /data/media
++      XDG_CACHE_HOME: /tmp/.cache # writable font cache for PDF rendering with read_only: true
+       TRUST_PROXY_SSL_HEADER: "true"
+       FORWARDED_ALLOW_IPS: "*"   # only nginx can reach this container (private network)
+     depends_on:
+@@ -41,7 +42,7 @@ services:
+     image: nginx:1.27-alpine
+     restart: unless-stopped
+     depends_on: [web]
+-    ports: ["80:80"]          # terminate TLS here (or in front of it); see docs/OPERATIONS.md
++    ports: ["${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"] # local: HTTP_BIND=127.0.0.1, HTTP_PORT=8000
+     volumes:
+       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+       - media:/data/media:ro
+diff --git a/docs/BUSINESS_RULES.md b/docs/BUSINESS_RULES.md
+index a557409..4f00422 100644
+--- a/docs/BUSINESS_RULES.md
++++ b/docs/BUSINESS_RULES.md
+@@ -27,7 +27,7 @@
+ * Several products in one invoice are locked in primary-key order (no deadlocks). Concurrency is tested (10 buyers, 5 units ⇒ exactly 5 succeed).
+ * Goods enter stock **only** when a goods receipt is confirmed; confirmation is once-only; receiving more than a PO line's outstanding quantity is refused. The recorded unit cost updates the product cost (**costing method: latest purchase cost**, audited).
+ * Valuation = `on hand × cost_price`. Ageing = FIFO estimate from inbound movements. Reconciliation compares each balance with the sum of its movements.
+-* Stock-take: counts are compared with **live** stock when applied, so sales made during the count are not overwritten.
++* Stock-take: save submitted counts atomically and apply under stock-take/product locks. Counted products must have no movements since the session started and must still match the opening snapshot; otherwise the whole application is refused. Pause sales/receipts/adjustments for counted products and start a fresh count if a conflict is reported. This prevents overwriting intervening sales; movement-aware live counting is not implemented.
+ * Low stock: `stock ≤ reorder_level`; out of stock: `≤ 0`. Legacy 1–5 availability scale retained as `availability_level`.
+ 
+ ## Payments, refunds, returns
+diff --git a/docs/SECURITY.md b/docs/SECURITY.md
+index ad98a8b..e022596 100644
+--- a/docs/SECURITY.md
++++ b/docs/SECURITY.md
+@@ -1,5 +1,7 @@
+ # Security review
+ 
++Current follow-up: [21 November 2026 retail review](RETAIL_REVIEW_2026-11-21.md) documents additional authorization, admin-mutation and financial-integrity findings and fixes, current verification, and open risks. The earlier blanket statement below that no high findings remain is historical, not a current certification.
++
+ Method: OWASP Top 10 / ASVS-style review of the code, automated tests (`tests/integration/test_security.py`,
+ `test_access_control.py`, `test_api.py`), static analysis (ruff `S` rules + Bandit), `pip-audit`, Django
+ `check --deploy`, and manual dynamic probes against a production-mode Gunicorn instance holding **synthetic data
+diff --git a/static/js/invoice.js b/static/js/invoice.js
+index 4905eb6..51a8efe 100644
+--- a/static/js/invoice.js
++++ b/static/js/invoice.js
+@@ -8,7 +8,7 @@
+   var search = document.getElementById("product-search");
+   var results = document.getElementById("search-results");
+   var payRows = document.getElementById("pay-rows");
+-  var active = -1, timer = null, current = [];
++  var active = -1, timer = null, current = [], searchVersion = 0;
+   var METHODS = JSON.parse(document.getElementById("pay-methods").textContent);
+ 
+   function money(n) { return (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2); }
+@@ -28,11 +28,13 @@
+       '<td class="num"><input class="qty" name="quantity" type="number" min="1" step="1" aria-label="Quantity" style="width:80px"></td>' +
+       '<td class="money">' + priceCell + '</td>' +
+       '<td class="money"><input class="disc" name="discount" type="number" min="0" step="0.01" aria-label="Line discount" style="width:90px"></td>' +
++      '<td class="money tax"><span class="rate"></span><br><small class="tax-amount"></small></td>' +
+       '<td class="money amt">0.00</td>' +
+       '<td><button type="button" class="btn small rm" aria-label="Remove line">✕</button></td>';
+     tr.querySelector('[name=product_id]').value = p.id;
+     tr.querySelector(".nm").textContent = p.name;
+     tr.querySelector(".stk").textContent = "In stock: " + (p.stock != null ? p.stock : "?");
++    tr.querySelector(".rate").textContent = (p.tax_rate || "0") + "%";
+     tr.dataset.price = p.price;
+     tr.querySelector(".qty").value = p.quantity || 1;
+     tr.querySelector(".disc").value = p.discount || 0;
+@@ -47,11 +49,21 @@
+       var q = num(tr.querySelector(".qty").value);
+       var price = cfg.override ? num(tr.querySelector(".price").value) : num(tr.dataset.price);
+       var net = Math.max(r2(q * price) - num(tr.querySelector(".disc").value), 0);
+-      tr.querySelector(".amt").textContent = money(net); nets.push([net, num(tr.dataset.tax)]); sub += net;
++      nets.push([net, num(tr.dataset.tax), tr]); sub += net;
+     });
+     sub = r2(sub);
+     var disc = r2(sub * num(document.getElementById("discount_percent").value) / 100), tax = 0;
+-    nets.forEach(function (n) { var share = sub ? r2(disc * n[0] / sub) : 0; tax += r2((n[0] - share) * n[1] / 100); });
++    var remaining = disc, remainingNet = sub;
++    nets.forEach(function (n, index) {
++      var share = index === nets.length - 1 ? remaining : (sub ? Math.min(r2(disc * n[0] / sub), remaining) : 0);
++      remainingNet = r2(remainingNet - n[0]);
++      share = Math.max(Math.min(share, n[0]), r2(remaining - remainingNet));
++      remaining = r2(remaining - share);
++      var lineTax = r2((n[0] - share) * n[1] / 100);
++      tax += lineTax;
++      n[2].querySelector(".tax-amount").textContent = money(lineTax);
++      n[2].querySelector(".amt").textContent = money(r2(n[0] - share + lineTax));
++    });
+     var ship = num(document.getElementById("shipping_charge").value);
+     var total = r2(sub - disc + tax + ship);
+     document.getElementById("t-sub").textContent = money(sub); document.getElementById("t-disc").textContent = money(disc);
+@@ -71,11 +83,13 @@
+     payRows.appendChild(d); recalc();
+   }
+ 
+-  function doSearch() {
++  function doSearch(selectFirst) {
+     var q = search.value.trim();
++    var version = ++searchVersion;
+     if (!q) { results.hidden = true; search.setAttribute("aria-expanded", "false"); return; }
+     fetch(search.dataset.url + "?q=" + encodeURIComponent(q), { credentials: "same-origin", headers: { "Accept": "application/json" } })
+-      .then(function (r) { return r.json(); }).then(function (data) {
++      .then(function (r) { if (!r.ok) { throw new Error("Search failed"); } return r.json(); }).then(function (data) {
++        if (version !== searchVersion || search.value.trim() !== q) { return; }
+         current = data.products; active = current.length ? 0 : -1; results.innerHTML = "";
+         current.forEach(function (p, i) {
+           var li = document.createElement("li"); li.setAttribute("role", "option"); li.setAttribute("aria-selected", i === 0 ? "true" : "false");
+@@ -87,17 +101,30 @@
+         });
+         if (!current.length) { var li = document.createElement("li"); li.textContent = "No matching products"; results.appendChild(li); }
+         results.hidden = false; search.setAttribute("aria-expanded", "true");
+-      }).catch(function () { /* offline: keep typing */ });
++        if (selectFirst && current.length) { pick(0); }
++      }).catch(function () {
++        if (version !== searchVersion) { return; }
++        current = []; active = -1;
++        results.textContent = "Product search failed. Please try again.";
++        results.hidden = false; search.setAttribute("aria-expanded", "true");
++      });
+   }
+-  function pick(i) { if (current[i]) { addLine(current[i]); search.value = ""; results.hidden = true; search.focus(); } }
++  function pick(i) { if (current[i]) { addLine(current[i]); searchVersion++; current = []; active = -1; search.value = ""; results.hidden = true; search.setAttribute("aria-expanded", "false"); search.focus(); } }
+   function mark() { Array.prototype.forEach.call(results.children, function (li, i) { li.setAttribute("aria-selected", i === active ? "true" : "false"); }); }
+ 
+   search.dataset.url = document.getElementById("product-search").getAttribute("data-url");
+-  search.addEventListener("input", function () { window.clearTimeout(timer); timer = window.setTimeout(doSearch, 180); });
++  search.addEventListener("input", function () {
++    searchVersion++; current = []; active = -1; results.hidden = true;
++    search.setAttribute("aria-expanded", "false");
++    window.clearTimeout(timer); timer = window.setTimeout(function () { doSearch(false); }, 180);
++  });
+   search.addEventListener("keydown", function (e) {
+     if (e.key === "ArrowDown") { e.preventDefault(); active = Math.min(active + 1, current.length - 1); mark(); }
+     else if (e.key === "ArrowUp") { e.preventDefault(); active = Math.max(active - 1, 0); mark(); }
+-    else if (e.key === "Enter") { e.preventDefault(); if (active >= 0) { pick(active); } }
++    else if (e.key === "Enter") {
++      e.preventDefault(); window.clearTimeout(timer);
++      if (active >= 0) { pick(active); } else if (search.value.trim()) { doSearch(true); }
++    }
+     else if (e.key === "Escape") { results.hidden = true; }
+   });
+   search.addEventListener("blur", function () { window.setTimeout(function () { results.hidden = true; }, 120); });
+@@ -120,6 +147,7 @@
+   mobile.addEventListener("blur", function () {
+     var v = mobile.value.trim(); if (!v) { return; }
+     fetch(mobile.dataset.url + "?mobile=" + encodeURIComponent(v), { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (c) {
++      if (mobile.value.trim() !== v) { return; }
+       var info = document.getElementById("cust-info");
+       if (c.exists) {
+         document.getElementById("name").value = c.name; document.getElementById("address").value = c.address || ""; document.getElementById("email").value = c.mail || "";
+diff --git a/templates/base.html b/templates/base.html
+index 7821252..ebb5c4b 100644
+--- a/templates/base.html
++++ b/templates/base.html
+@@ -28,6 +28,7 @@
+     {% if perms.payments.view_payment %}<li><a href="{% url 'payments:list' %}" {% if request.resolver_match.app_name == 'payments' %}aria-current="page"{% endif %}>Payments</a></li>{% endif %}
+     {% if perms.returns.view_salesreturn %}<li><a href="{% url 'returns:list' %}" {% if request.resolver_match.app_name == 'returns' %}aria-current="page"{% endif %}>Returns</a></li>{% endif %}
+     {% if perms.customers.view_customer %}<li><a href="{% url 'customers:list' %}" {% if request.resolver_match.app_name == 'customers' %}aria-current="page"{% endif %}>Customers</a></li>{% endif %}
++    {% if perms.products.view_taxconfiguration %}<li><a href="{% url 'taxes:index' %}" {% if request.resolver_match.app_name == 'taxes' %}aria-current="page"{% endif %}>Tax</a></li>{% endif %}
+     <li class="group">Catalogue &amp; stock</li>
+     {% if perms.products.view_product %}<li><a href="{% url 'products:list' %}" {% if request.resolver_match.app_name == 'products' %}aria-current="page"{% endif %}>Products</a></li>{% endif %}
+     {% if perms.inventory.view_stockmovement or perms.products.view_product %}<li><a href="{% url 'inventory:stock' %}" {% if request.resolver_match.app_name == 'inventory' %}aria-current="page"{% endif %}>Inventory</a></li>{% endif %}
+diff --git a/templates/inventory/stock.html b/templates/inventory/stock.html
+index 0a6cd3a..cad7e01 100644
+--- a/templates/inventory/stock.html
++++ b/templates/inventory/stock.html
+@@ -13,6 +13,6 @@
+ <td class="num" data-label="On hand">{{ p.stock_on_hand }}</td><td data-label="Unit">{{ p.unit }}</td><td class="num" data-label="Reorder at">{{ p.reorder_level }}</td><td data-label="Level">{{ p.availability_level }}</td>
+ <td data-label="Expiry">{{ p.expiry_date|date:"Y-m-d"|default:"–" }}</td>
+ <td data-label="Status">{% if p.is_out_of_stock %}<span class="badge badge-bad">Out of stock</span>{% elif p.is_low_stock %}<span class="badge badge-warn">Low stock</span>{% else %}<span class="badge badge-ok">In stock</span>{% endif %}</td>
+-<td>{% if perms.purchasing.receive_goods %}<a class="btn small" href="{% url 'purchasing:quick_receive' p.pk %}">Receive</a>{% endif %}</td></tr>
++<td>{% if perms.purchasing.receive_goods and perms.purchasing.add_supplierinvoice %}<a class="btn small" href="{% url 'purchasing:quick_receive' p.pk %}">Receive</a>{% elif perms.purchasing.add_goodsreceipt %}<a class="btn small" href="{% url 'purchasing:receipt_create' %}">New receipt</a>{% endif %}</td></tr>
+ {% empty %}<tr><td class="empty" colspan="10">No products match.</td></tr>{% endfor %}</tbody></table></div>
+ {% include "generic/pagination.html" %}{% endblock %}
+diff --git a/templates/products/detail.html b/templates/products/detail.html
+index 1ba1857..fc39f7d 100644
+--- a/templates/products/detail.html
++++ b/templates/products/detail.html
+@@ -6,7 +6,7 @@
+ {% if object.is_active %}<form class="inline" method="post" action="{% url 'products:archive' object.pk %}" data-confirm="Archive this product? It can no longer be sold; history is kept.">{% csrf_token %}<button class="btn danger" type="submit">Archive</button></form>
+ {% else %}<form class="inline" method="post" action="{% url 'products:restore' object.pk %}">{% csrf_token %}<button class="btn" type="submit">Restore</button></form>{% endif %}{% endif %}
+ {% if perms.inventory.adjust_stock %}<a class="btn" href="{% url 'inventory:adjust' %}?product={{ object.pk }}">Adjust stock</a>{% endif %}
+-{% if perms.purchasing.receive_goods %}<a class="btn" href="{% url 'purchasing:quick_receive' object.pk %}">Receive stock</a>{% endif %}
++{% if perms.purchasing.receive_goods and perms.purchasing.add_supplierinvoice %}<a class="btn" href="{% url 'purchasing:quick_receive' object.pk %}">Receive stock</a>{% elif perms.purchasing.add_goodsreceipt %}<a class="btn" href="{% url 'purchasing:receipt_create' %}">New goods receipt</a>{% endif %}
+ </div></div>
+ <div class="cards">
+   <div class="stat"><span>Selling price</span><b>{{ object.selling_price|money }}</b></div>
+diff --git a/templates/sales/create.html b/templates/sales/create.html
+index 481433d..1d305c1 100644
+--- a/templates/sales/create.html
++++ b/templates/sales/create.html
+@@ -23,7 +23,8 @@
+       <div class="field" style="position:relative"><label for="product-search">Add product (name, SKU or barcode)</label>
+         <input id="product-search" data-url="{% url 'sales:product_search' %}" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" placeholder="Type to search…">
+         <ul id="search-results" class="search-results" role="listbox" hidden></ul></div>
+-      <div class="table-wrap"><table class="data line-table" id="lines"><thead><tr><th>Product</th><th class="num">Qty</th><th class="money">Price</th><th class="money">Discount</th><th class="money">Amount</th><th></th></tr></thead>
++      <p class="help">Prices exclude tax. Each product's saved tax rate is applied after discounts.{% if perms.products.view_taxconfiguration %} <a href="{% url 'taxes:index' %}">Review tax rates</a>.{% endif %}</p>
++      <div class="table-wrap"><table class="data line-table" id="lines"><thead><tr><th>Product</th><th class="num">Qty</th><th class="money">Price</th><th class="money">Discount</th><th class="money">Tax</th><th class="money">Line total</th><th></th></tr></thead>
+         <tbody></tbody></table></div>
+       <p id="no-lines" class="empty">No items yet. Search above to add products.</p>
+     </section>
+diff --git a/templates/sales/detail.html b/templates/sales/detail.html
+index 9daa869..1220162 100644
+--- a/templates/sales/detail.html
++++ b/templates/sales/detail.html
+@@ -22,13 +22,13 @@
+ <td>{% if perms.payments.reverse_payment and p.status == "completed" %}<form class="inline" method="post" action="{% url 'payments:reverse' p.pk %}" data-confirm="Reverse this payment? Enter a reason on the next screen."><button class="btn small" type="submit">Reverse</button>{% csrf_token %}</form>{% endif %}</td></tr>
+ {% empty %}<tr><td colspan="6" class="empty">No payments recorded.</td></tr>{% endfor %}</tbody></table>
+ {% if can_pay %}<h2>Record payment</h2><form method="post" action="{% url 'payments:create' object.pk %}">{% csrf_token %}{% include "generic/form_fields.html" with form=payment_form %}<button class="btn primary" type="submit">Record payment</button></form>{% endif %}</div></div>
+-<h2>Items</h2><div class="table-wrap"><table class="data"><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th>Unit</th><th class="money">Price</th><th class="money">Discount</th><th class="money">Amount</th><th class="money">Tax</th></tr></thead><tbody>
+-{% for l in object.lines.all %}<tr><td>{{ forloop.counter }}</td><td>{{ l.description }}</td><td class="num">{{ l.quantity }}</td><td>{{ l.unit }}</td><td class="money">{{ l.unit_price|money:False }}</td><td class="money">{{ l.discount|money:False }}</td><td class="money">{{ l.net_amount|money:False }}</td><td class="money">{{ l.tax_amount|money:False }}</td></tr>{% endfor %}</tbody>
+-<tfoot><tr><td colspan="6" class="money">Subtotal</td><td class="money" colspan="2">{{ object.subtotal|money }}</td></tr>
+-<tr><td colspan="6" class="money">Invoice discount ({{ object.discount_percent }}%)</td><td class="money" colspan="2">− {{ object.discount_amount|money }}</td></tr>
+-<tr><td colspan="6" class="money">{{ BUSINESS.TAX_LABEL }}</td><td class="money" colspan="2">{{ object.tax_total|money }}</td></tr>
+-{% if object.shipping_charge %}<tr><td colspan="6" class="money">Shipping</td><td class="money" colspan="2">{{ object.shipping_charge|money }}</td></tr>{% endif %}
+-<tr><td colspan="6" class="money">Total</td><td class="money" colspan="2">{{ object.total|money }}</td></tr></tfoot></table></div>
++<h2>Items</h2><div class="table-wrap"><table class="data"><thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th>Unit</th><th class="money">Price</th><th class="money">Discount</th><th class="money">Base after discounts</th><th class="num">Tax rate</th><th class="money">Tax</th><th class="money">Line total</th></tr></thead><tbody>
++{% for l in object.lines.all %}<tr><td>{{ forloop.counter }}</td><td>{{ l.description }}</td><td class="num">{{ l.quantity }}</td><td>{{ l.unit }}</td><td class="money">{{ l.unit_price|money:False }}</td><td class="money">{{ l.discount|money:False }}</td><td class="money">{{ l.taxable_amount|money:False }}</td><td class="num">{{ l.tax_rate }}%</td><td class="money">{{ l.tax_amount|money:False }}</td><td class="money">{{ l.line_total|money:False }}</td></tr>{% endfor %}</tbody>
++<tfoot><tr><td colspan="8" class="money">Subtotal</td><td class="money" colspan="2">{{ object.subtotal|money }}</td></tr>
++<tr><td colspan="8" class="money">Invoice discount ({{ object.discount_percent }}%)</td><td class="money" colspan="2">− {{ object.discount_amount|money }}</td></tr>
++<tr><td colspan="8" class="money">{{ object.tax_label }}</td><td class="money" colspan="2">{{ object.tax_total|money }}</td></tr>
++{% if object.shipping_charge %}<tr><td colspan="8" class="money">Shipping</td><td class="money" colspan="2">{{ object.shipping_charge|money }}</td></tr>{% endif %}
++<tr><td colspan="8" class="money">Total</td><td class="money" colspan="2">{{ object.total|money }}</td></tr></tfoot></table></div>
+ {% if object.returns.all %}<h2>Returns</h2><ul>{% for r in object.returns.all %}<li><a href="{{ r.get_absolute_url }}">{{ r.number }}</a> — {{ r.get_status_display }} — {{ r.credit_amount|money }}</li>{% endfor %}</ul>{% endif %}
+ {% if perms.sales.cancel_invoice and object.is_cancellable %}<details class="card no-print"><summary>Cancel this invoice</summary>
+ <form method="post" action="{% url 'sales:cancel' object.pk %}" data-confirm="Cancel this invoice? Stock will be restored.">{% csrf_token %}{% include "generic/form_fields.html" with form=cancel_form %}<button class="btn danger" type="submit">Cancel invoice</button>
+diff --git a/templates/sales/invoice_print.html b/templates/sales/invoice_print.html
+index 124d3ef..4b097b4 100644
+--- a/templates/sales/invoice_print.html
++++ b/templates/sales/invoice_print.html
+@@ -6,17 +6,17 @@
+ {% if not for_pdf %}<div class="toolbar no-print"><button type="button" data-print>Print</button> <a href="{% url 'sales:pdf' invoice.pk %}">Download PDF</a> <a href="{% url 'sales:detail' invoice.pk %}">Back</a></div>{% endif %}
+ <header class="inv-head"><div class="co">
+ {% if logo_uri %}<img src="{{ logo_uri }}" alt="" class="logo">{% elif not for_pdf %}<img src="{% static 'img/logo.jpg' %}" alt="" class="logo">{% endif %}
+-<div><h1>{{ BUSINESS.NAME }}</h1><p>{{ BUSINESS.ADDRESS }}<br>Contact: {{ BUSINESS.CONTACT }} · {{ BUSINESS.EMAIL }}{% if BUSINESS.TAX_ID %}<br>Tax ID: {{ BUSINESS.TAX_ID }}{% endif %}</p></div></div>
+-<div class="meta"><h2>{% if BUSINESS.TAX_ID and invoice.tax_total %}TAX INVOICE{% else %}INVOICE{% endif %}</h2>
++<div><h1>{{ BUSINESS.NAME }}</h1><p>{{ BUSINESS.ADDRESS }}<br>Contact: {{ BUSINESS.CONTACT }} · {{ BUSINESS.EMAIL }}{% if invoice.tax_registration_number %}<br>Tax ID: {{ invoice.tax_registration_number }}{% endif %}</p></div></div>
++<div class="meta"><h2>{% if invoice.tax_registration_number and invoice.tax_total %}TAX INVOICE{% else %}INVOICE{% endif %}</h2>
+ <table><tr><th>Invoice No.</th><td>{{ invoice.number }}</td></tr><tr><th>Date</th><td>{{ invoice.date }}</td></tr><tr><th>Sales by</th><td>{{ invoice.sold_by|default:"–" }}</td></tr>
+ <tr><th>Status</th><td>{{ invoice.get_status_display }} / {{ invoice.payment_status }}</td></tr></table></div></header>
+ {% if invoice.status == "Cancelled" %}<p class="void">CANCELLED</p>{% endif %}
+ <section class="bill"><h3>Billing to</h3><p><strong>{{ invoice.customer_name }}</strong><br>{{ invoice.billing_address|linebreaksbr }}<br>Mobile: {{ invoice.customer_mobile }}</p></section>
+-<table class="items"><thead><tr><th>S.No</th><th>Product</th><th class="r">Qty</th><th>Unit</th><th class="r">Price / unit</th><th class="r">Disc.</th>{% if invoice.tax_total %}<th class="r">{{ BUSINESS.TAX_LABEL }}</th>{% endif %}<th class="r">Amount ({{ BUSINESS.CURRENCY }})</th></tr></thead><tbody>
+-{% for l in lines %}<tr><td>{{ forloop.counter }}</td><td>{{ l.description }}</td><td class="r">{{ l.quantity }}</td><td>{{ l.unit }}</td><td class="r">{{ l.unit_price|money:False }}</td><td class="r">{{ l.discount|money:False }}</td>{% if invoice.tax_total %}<td class="r">{{ l.tax_amount|money:False }} ({{ l.tax_rate }}%)</td>{% endif %}<td class="r">{{ l.net_amount|money:False }}</td></tr>{% endfor %}</tbody></table>
++<table class="items"><thead><tr><th>S.No</th><th>Product</th><th class="r">Qty</th><th>Unit</th><th class="r">Price / unit</th><th class="r">Line disc.</th>{% if invoice.discount_amount %}<th class="r">Invoice disc.</th>{% endif %}{% if invoice.tax_total %}<th class="r">{{ invoice.tax_label }}</th>{% endif %}<th class="r">Line total ({{ BUSINESS.CURRENCY }})</th></tr></thead><tbody>
++{% for l in lines %}<tr><td>{{ forloop.counter }}</td><td>{{ l.description }}</td><td class="r">{{ l.quantity }}</td><td>{{ l.unit }}</td><td class="r">{{ l.unit_price|money:False }}</td><td class="r">{{ l.discount|money:False }}</td>{% if invoice.discount_amount %}<td class="r">{{ l.allocated_discount|money:False }}</td>{% endif %}{% if invoice.tax_total %}<td class="r">{{ l.tax_amount|money:False }} ({{ l.tax_rate }}%)</td>{% endif %}<td class="r">{{ l.line_total|money:False }}</td></tr>{% endfor %}</tbody></table>
+ <table class="totals"><tr><th>Subtotal</th><td>{{ invoice.subtotal|money }}</td></tr>
+ {% if invoice.discount_amount %}<tr><th>Discount ({{ invoice.discount_percent }}%)</th><td>− {{ invoice.discount_amount|money }}</td></tr>{% endif %}
+-{% if invoice.tax_total %}<tr><th>Total {{ BUSINESS.TAX_LABEL }}</th><td>{{ invoice.tax_total|money }}</td></tr>{% endif %}
++{% if invoice.tax_total %}<tr><th>Total {{ invoice.tax_label }}</th><td>{{ invoice.tax_total|money }}</td></tr>{% endif %}
+ {% if invoice.shipping_charge %}<tr><th>Shipping</th><td>{{ invoice.shipping_charge|money }}</td></tr>{% endif %}
+ <tr class="grand"><th>Total</th><td>{{ invoice.total|money }}</td></tr>
+ {% if invoice.total_paid %}<tr><th>Paid</th><td>{{ invoice.total_paid|money }}</td></tr><tr><th>Balance due</th><td>{{ invoice.balance_due|money }}</td></tr>{% endif %}</table>
+diff --git a/templates/suppliers/detail.html b/templates/suppliers/detail.html
+index d5df60e..2c837e0 100644
+--- a/templates/suppliers/detail.html
++++ b/templates/suppliers/detail.html
+@@ -2,9 +2,9 @@
+ {% block content %}<div class="page-head"><h1>{{ object.name }}{% if object.company %} <small>· {{ object.company }}</small>{% endif %}</h1>
+ <div class="actions">{% if perms.suppliers.change_supplier %}<a class="btn" href="{% url 'suppliers:update' object.pk %}">Edit</a>{% endif %}
+ {% if perms.purchasing.add_purchaseorder %}<a class="btn primary" href="{% url 'purchasing:order_create' %}?supplier={{ object.pk }}">New purchase order</a>{% endif %}</div></div>
+-<div class="cards"><div class="stat {% if payable > 0 %}warn{% else %}ok{% endif %}"><span>Payable to supplier</span><b>{{ payable|money }}</b></div></div>
++{% if perms.purchasing.view_supplierinvoice %}<div class="cards"><div class="stat {% if payable > 0 %}warn{% else %}ok{% endif %}"><span>Payable to supplier</span><b>{{ payable|money }}</b></div></div>{% endif %}
+ <div class="grid2"><div class="card"><dl class="kv"><dt>Mobile</dt><dd>{{ object.mobile|default:"–" }}</dd><dt>Email</dt><dd>{{ object.email|default:"–" }}</dd><dt>Address</dt><dd>{{ object.address|default:"–" }}</dd><dt>Terms</dt><dd>{{ object.terms|default:"–" }}</dd></dl></div>
+-<div class="card"><h2 style="margin-top:0">Supplier invoices</h2><table class="data"><thead><tr><th>No.</th><th>Date</th><th class="money">Total</th><th>Payment</th></tr></thead><tbody>
+-{% for i in invoices %}<tr><td><a href="{{ i.get_absolute_url }}">{{ i.invoice_number }}</a></td><td>{{ i.invoice_date|date:"Y-m-d" }}</td><td class="money">{{ i.total_amount|money }}</td><td>{{ i.payment_status }}</td></tr>{% empty %}<tr><td colspan="4" class="empty">None.</td></tr>{% endfor %}</tbody></table></div></div>
++{% if perms.purchasing.view_supplierinvoice %}<div class="card"><h2 style="margin-top:0">Supplier invoices</h2><table class="data"><thead><tr><th>No.</th><th>Date</th><th class="money">Total</th><th>Payment</th></tr></thead><tbody>
++{% for i in invoices %}<tr><td><a href="{{ i.get_absolute_url }}">{{ i.invoice_number }}</a></td><td>{{ i.invoice_date|date:"Y-m-d" }}</td><td class="money">{{ i.total_amount|money }}</td><td>{{ i.payment_status }}</td></tr>{% empty %}<tr><td colspan="4" class="empty">None.</td></tr>{% endfor %}</tbody></table></div>{% endif %}</div>
+ <h2>Purchase orders</h2><div class="table-wrap"><table class="data"><thead><tr><th>No.</th><th>Date</th><th>Status</th></tr></thead><tbody>{% for o in orders %}<tr><td><a href="{{ o.get_absolute_url }}">{{ o.number }}</a></td><td>{{ o.order_date|date:"Y-m-d" }}</td><td>{{ o.get_status_display }}</td></tr>{% empty %}<tr><td colspan="3" class="empty">None.</td></tr>{% endfor %}</tbody></table></div>
+ {% endblock %}
+diff --git a/tests/e2e/test_ui_workflows.py b/tests/e2e/test_ui_workflows.py
+index fb13df1..5c78f83 100644
+--- a/tests/e2e/test_ui_workflows.py
++++ b/tests/e2e/test_ui_workflows.py
+@@ -51,7 +51,10 @@ def test_full_retail_workflow(page, staff):
+     expect(page.locator("h1")).to_contain_text("Apple")
+     expect(page.locator(".stat", has_text="On hand")).to_contain_text("10 kg")
+ 
+-    # 2. receive 20 more via the legacy 'add item' flow
++    # 2. A manager receives and records the bill using the combined shortcut.
++    # Inventory staff use draft goods receipts; they cannot create supplier bills.
++    page.click("text=Sign out")
++    login(page, "e2e_manager")
+     page.goto(f"/purchasing/receive/{Product.objects.get().pk}/")
+     page.fill("#id_quantity", "20")
+     page.click("text=Receive & record supplier invoice")
+diff --git a/tests/unit/test_calculations.py b/tests/unit/test_calculations.py
+index 5a27c99..8989729 100644
+--- a/tests/unit/test_calculations.py
++++ b/tests/unit/test_calculations.py
+@@ -19,6 +19,17 @@ def test_legacy_example_matches_recorded_flask_totals():
+     assert t.tax_total == D("0.00")
+ 
+ 
++def test_discount_rounding_does_not_make_a_free_line_tax_negative():
++    totals = compute_invoice(
++        [L(1, ".01", tax="100"), L(1, ".01", tax="100"), L(1, ".01", tax="100"), L(1, "0", tax="100")],
++        discount_amount=D(".01"),
++    )
++    assert sum(line.allocated_discount for line in totals.lines) == D(".01")
++    assert all(line.taxable >= 0 and line.tax >= 0 for line in totals.lines)
++    assert totals.tax_total == D(".02")
++    assert totals.total == D(".04")
++
++
+ def test_no_discount_no_tax():
+     t = compute_invoice([L(2, "70")])
+     assert (t.subtotal, t.discount_amount, t.total) == (D("140.00"), D("0.00"), D("140.00"))
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+index 0000000..a63abd4
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,3 @@
++# Backup and recovery scripts must run unchanged in Linux containers, including
++# images built from a Windows checkout.
++*.sh text eol=lf
+diff --git a/apps/core/admin.py b/apps/core/admin.py
+new file mode 100644
+index 0000000..a801cb5
+--- /dev/null
++++ b/apps/core/admin.py
+@@ -0,0 +1,14 @@
++from django.contrib import admin
++
++
++class HistoricalDocumentAdmin(admin.ModelAdmin):
++    """Inspect transaction records; mutations must use the audited service workflows."""
++
++    def has_add_permission(self, request):
++        return False
++
++    def has_change_permission(self, request, obj=None):
++        return False
++
++    def has_delete_permission(self, request, obj=None):
++        return False
+diff --git a/apps/products/migrations/0002_taxconfiguration.py b/apps/products/migrations/0002_taxconfiguration.py
+new file mode 100644
+index 0000000..c06867c
+--- /dev/null
++++ b/apps/products/migrations/0002_taxconfiguration.py
+@@ -0,0 +1,29 @@
++# Generated by Django 5.2.18 on 2026-11-14 12:32
++
++import django.core.validators
++from decimal import Decimal
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ('products', '0001_initial'),
++    ]
++
++    operations = [
++        migrations.CreateModel(
++            name='TaxConfiguration',
++            fields=[
++                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
++                ('created_at', models.DateTimeField(auto_now_add=True)),
++                ('updated_at', models.DateTimeField(auto_now=True)),
++                ('label', models.CharField(default='Tax', max_length=40)),
++                ('registration_number', models.CharField(blank=True, max_length=80)),
++                ('default_rate', models.DecimalField(decimal_places=2, default=Decimal('0.00'), help_text='Used for new products. Existing products and invoices keep their saved rates.', max_digits=5, validators=[django.core.validators.MinValueValidator(Decimal('0')), django.core.validators.MaxValueValidator(Decimal('100'))])),
++            ],
++            options={
++                'constraints': [models.CheckConstraint(condition=models.Q(('pk', 1)), name='tax_configuration_singleton'), models.CheckConstraint(condition=models.Q(('default_rate__gte', 0), ('default_rate__lte', 100)), name='tax_default_0_100')],
++            },
++        ),
++    ]
+diff --git a/apps/products/tax_forms.py b/apps/products/tax_forms.py
+new file mode 100644
+index 0000000..3105d23
+--- /dev/null
++++ b/apps/products/tax_forms.py
+@@ -0,0 +1,35 @@
++from decimal import Decimal
++
++from django import forms
++
++from .models import Category, Product, TaxConfiguration
++
++
++class TaxConfigurationForm(forms.ModelForm):
++    class Meta:
++        model = TaxConfiguration
++        fields = ["label", "registration_number", "default_rate"]
++
++
++class ProductTaxForm(forms.Form):
++    products = forms.ModelMultipleChoiceField(queryset=Product.objects.all())
++    rate = forms.DecimalField(
++        min_value=Decimal("0"), max_value=Decimal("100"), max_digits=5, decimal_places=2
++    )
++    reason = forms.CharField(max_length=255, help_text="Recorded in the audit log.")
++
++
++class TaxSummaryFilterForm(forms.Form):
++    start = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
++    end = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
++
++    def clean(self):
++        data = super().clean()
++        if data.get("start") and data.get("end") and data["start"] > data["end"]:
++            raise forms.ValidationError("Start date must be on or before end date.")
++        return data
++
++
++class TaxProductFilterForm(forms.Form):
++    q = forms.CharField(required=False, label="Search name or SKU")
++    category = forms.ModelChoiceField(queryset=Category.objects.all(), required=False)
+diff --git a/apps/products/tax_urls.py b/apps/products/tax_urls.py
+new file mode 100644
+index 0000000..ebf5e91
+--- /dev/null
++++ b/apps/products/tax_urls.py
+@@ -0,0 +1,9 @@
++from django.urls import path
++
++from .tax_views import TaxSummaryView, TaxView
++
++app_name = "taxes"
++urlpatterns = [
++    path("", TaxView.as_view(), name="index"),
++    path("summary/", TaxSummaryView.as_view(), name="summary"),
++]
+diff --git a/apps/products/tax_views.py b/apps/products/tax_views.py
+new file mode 100644
+index 0000000..61ced05
+--- /dev/null
++++ b/apps/products/tax_views.py
+@@ -0,0 +1,162 @@
++from decimal import Decimal
++
++from django.contrib import messages
++from django.core.exceptions import PermissionDenied
++from django.core.paginator import Paginator
++from django.db import transaction
++from django.db.models import Count, Q, Sum
++from django.shortcuts import redirect, render
++from django.views import View
++
++from apps.audit.services import log as audit_log
++from apps.core.csvutil import csv_response
++from apps.core.mixins import AppPermissionMixin
++from apps.sales.models import Invoice, InvoiceLine
++
++from .models import Product, TaxConfiguration
++from .tax_forms import ProductTaxForm, TaxConfigurationForm, TaxProductFilterForm, TaxSummaryFilterForm
++
++
++class TaxView(AppPermissionMixin, View):
++    permission_required = "products.view_taxconfiguration"
++
++    def get(self, request):
++        return self.render_page(request)
++
++    def render_page(self, request, *, settings_form=None, product_form=None, status=200):
++        configuration = TaxConfiguration.current()
++        product_filter = TaxProductFilterForm(request.GET)
++        products = Product.objects.select_related("category").order_by("name", "pk")
++        if product_filter.is_valid():
++            if q := product_filter.cleaned_data.get("q"):
++                products = products.filter(Q(name__icontains=q) | Q(sku__icontains=q))
++            if category := product_filter.cleaned_data.get("category"):
++                products = products.filter(category=category)
++        params = request.GET.copy()
++        params.pop("page", None)
++        return render(
++            request,
++            "taxes/index.html",
++            {
++                "configuration": configuration,
++                "settings_form": settings_form
++                if settings_form is not None
++                else TaxConfigurationForm(instance=configuration),
++                "product_form": product_form if product_form is not None else ProductTaxForm(),
++                "product_filter": product_filter,
++                "page_obj": Paginator(products, 25).get_page(request.GET.get("page")),
++                "querystring": params.urlencode(),
++                "rate_groups": Product.objects.values("tax_rate")
++                .annotate(count=Count("pk"))
++                .order_by("tax_rate"),
++            },
++            status=status,
++        )
++
++    def post(self, request):
++        if not request.user.has_perm("products.change_taxconfiguration"):
++            raise PermissionDenied
++        action = request.POST.get("action")
++        if action == "settings":
++            current = TaxConfiguration.current()
++            defaults = {
++                field: getattr(current, field) for field in ("label", "registration_number", "default_rate")
++            }
++            form = TaxConfigurationForm(request.POST, instance=current)
++            if not form.is_valid():
++                return self.render_page(request, settings_form=form, status=400)
++            with transaction.atomic():
++                TaxConfiguration.objects.get_or_create(pk=1, defaults=defaults)
++                configuration = TaxConfiguration.objects.select_for_update().get(pk=1)
++                before = {
++                    field: str(getattr(configuration, field))
++                    for field in ("label", "registration_number", "default_rate")
++                }
++                for field, value in form.cleaned_data.items():
++                    setattr(configuration, field, value)
++                configuration.save()
++                audit_log("tax.settings_updated", configuration, before=before, after=form.cleaned_data)
++            messages.success(
++                request,
++                "Tax settings saved. The default applies to new products; existing product rates and invoices are unchanged.",
++            )
++        elif action == "products":
++            if not request.user.has_perm("products.change_product"):
++                raise PermissionDenied
++            form = ProductTaxForm(request.POST)
++            if not form.is_valid():
++                return self.render_page(request, product_form=form, status=400)
++            with transaction.atomic():
++                products = list(
++                    Product.objects.select_for_update()
++                    .filter(pk__in=form.cleaned_data["products"].values("pk"))
++                    .order_by("pk")
++                )
++                for product in products:
++                    old = product.tax_rate
++                    product.tax_rate = form.cleaned_data["rate"]
++                    product.save(update_fields=["tax_rate", "updated_at"])
++                    audit_log(
++                        "product.tax_updated",
++                        product,
++                        old_rate=str(old),
++                        new_rate=str(product.tax_rate),
++                        reason=form.cleaned_data["reason"],
++                    )
++            messages.success(
++                request,
++                f"Tax updated for {len(products)} products. New sales use these rates; issued invoices keep their original amounts.",
++            )
++        else:
++            messages.error(request, "Choose a valid tax action.")
++        return redirect("taxes:index")
++
++
++class TaxSummaryView(AppPermissionMixin, View):
++    permission_required = ("products.view_taxconfiguration", "reports.view_financial_reports")
++
++    def get(self, request):
++        form = TaxSummaryFilterForm(request.GET)
++        lines = InvoiceLine.objects.exclude(invoice__status=Invoice.Status.CANCELLED)
++        if form.is_valid():
++            if start := form.cleaned_data.get("start"):
++                lines = lines.filter(invoice__date__gte=start)
++            if end := form.cleaned_data.get("end"):
++                lines = lines.filter(invoice__date__lte=end)
++        else:
++            lines = lines.none()
++        groups = list(
++            lines.values("invoice__tax_label", "tax_rate")
++            .annotate(
++                taxable=Sum("taxable_amount"),
++                tax=Sum("tax_amount"),
++                invoices=Count("invoice_id", distinct=True),
++            )
++            .order_by("invoice__tax_label", "tax_rate")
++        )
++        if request.GET.get("format") == "csv" and form.is_valid():
++            return csv_response(
++                "invoice-tax-summary.csv",
++                ["Tax label", "Rate (%)", "Invoices", "Base after discounts", "Tax"],
++                [
++                    [
++                        group["invoice__tax_label"],
++                        group["tax_rate"],
++                        group["invoices"],
++                        group["taxable"],
++                        group["tax"],
++                    ]
++                    for group in groups
++                ],
++            )
++        return render(
++            request,
++            "taxes/summary.html",
++            {
++                "form": form,
++                "groups": groups,
++                "total_tax": sum((group["tax"] for group in groups), Decimal("0.00")),
++                "querystring": request.GET.urlencode(),
++            },
++            status=200 if form.is_valid() else 400,
++        )
+diff --git a/apps/sales/migrations/0002_invoice_tax_label_invoice_tax_registration_number.py b/apps/sales/migrations/0002_invoice_tax_label_invoice_tax_registration_number.py
+new file mode 100644
+index 0000000..bd1afc8
+--- /dev/null
++++ b/apps/sales/migrations/0002_invoice_tax_label_invoice_tax_registration_number.py
+@@ -0,0 +1,33 @@
++# Generated by Django 5.2.18 on 2026-11-14 12:32
++
++from django.db import migrations, models
++
++
++def snapshot_existing_tax_details(apps, schema_editor):
++    from django.conf import settings
++
++    apps.get_model("sales", "Invoice").objects.using(schema_editor.connection.alias).update(
++        tax_label=settings.BUSINESS["TAX_LABEL"],
++        tax_registration_number=settings.BUSINESS["TAX_ID"],
++    )
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ('sales', '0001_initial'),
++    ]
++
++    operations = [
++        migrations.AddField(
++            model_name='invoice',
++            name='tax_label',
++            field=models.CharField(default='Tax', max_length=40),
++        ),
++        migrations.AddField(
++            model_name='invoice',
++            name='tax_registration_number',
++            field=models.CharField(blank=True, max_length=80),
++        ),
++        migrations.RunPython(snapshot_existing_tax_details, migrations.RunPython.noop),
++    ]
+diff --git a/docs/RETAIL_REVIEW_2026-11-21.md b/docs/RETAIL_REVIEW_2026-11-21.md
+new file mode 100644
+index 0000000..a669960
+--- /dev/null
++++ b/docs/RETAIL_REVIEW_2026-11-21.md
+@@ -0,0 +1,211 @@
++# Retail application review — 21 November 2026
++
++## Scope and evidence
++
++Reviewed the active Django routes, templates/JavaScript/CSS, service layer, models and migrations, authentication/roles, REST serializers/permissions, imports, reports, legacy importer, tests, configuration, Docker/Nginx/Gunicorn deployment, GitHub workflows and recovery scripts. Flask and its SQL remain rollback/reference material, not the deployed application.
++
++The working tree already contained uncommitted tax configuration and Windows startup work. Those changes were preserved. Earlier README/FEATURE_COMPARISON/SECURITY/TEST_REPORT claims were treated as historical claims, not current proof. This report supersedes blanket statements about feature completeness or absence of high-severity findings.
++
++Business inference: one business, one stock pool, Malaysian address, RM, Kuala Lumpur time, integer quantities, latest-purchase-cost valuation, and customer credit sales. These defaults do not confirm actual jurisdiction, registration, turnover or accounting policies. No tax rate, payment credential, or accounting policy was invented.
++
++**Verified** means exercised by tests/build/recovery in isolation. **Partial** means a working subset with a material gap. **Missing** means no implementation was found. **Configured** means code/config exists but the external service or production operation is unverified. Tests use synthetic data. Passing tests do not establish correctness for every possible input or concurrency interleaving.
++
++Importance: essential, useful, optional, or not applicable to the inferred single-store business. Conditional classifications must change if the owner confirms relevant needs. Priorities: **P0** integrity/security/recovery blocker; **P1** essential operational completion; **P2** useful improvement; **P3** optional/future. “Fixed” identifies work done in this review.
++
++## Architecture and traced workflows
++
++Python 3.13, Django 5.2, DRF, PostgreSQL 16, psycopg, django-axes, django-filter, WeasyPrint and OpenPyXL; server-rendered Django templates and plain JavaScript/CSS. Runtime/dev requirements are pinned. There is no Node frontend build or configured static type checker.
++
++| Workflow | UI → backend → persistence | Assessment |
++|---|---|---|
++| Sell | `templates/sales/create.html` → `static/js/invoice.js` → InvoiceCreateView or InvoiceViewSet → create_invoice → locked products → Decimal calculations → Invoice/InvoiceLine, StockMovement, customer LedgerEntry and optional Payment in one transaction | HTTP/API/Chromium/concurrent PostgreSQL paths tested; fixed last-stock replay, rounding and lock ordering. |
++| Collect/reverse | Invoice detail → payments views/services → invoice lock → Payment/ledger → recomputed balance/status | Partial/split collections exist; fixed retry races, token conflicts and invalid reversals. This records settlements; it does not execute a bank/card payment. |
++| Return | Return form → request_return → pending lines → manager decision → invoice/product locks → credit, restock or damaged write-off, ledger and refund atomically | Approval flow tested; fixed duplicate/fractional requests, zero-value cancellation and outstanding shipping. |
++| Purchase | PO form → PO/lines → linked draft receipt → confirm → PO quantities, stock ledger and latest cost → supplier bill → payment | Core chain tested; fixed service/document validation. Cumulative invoice matching and supplier credits remain incomplete. |
++| Count | Stock-take form → locked count batch → validate all → save/apply → stock corrections | Fixed partial saves, changes after application and intervening-movement overwrites. Conflicting counts are refused atomically; start a fresh count with movements paused. |
++| Import | Upload → parse/validate → uploader-scoped ImportJob preview → one-time locked transactional apply → models/movements | Working supported imports; update quantities are additive and exports are not a lossless round trip. |
++| Report | Permission/range validation → ORM aggregation → HTML/chart/CSV/XLSX/PDF | Arithmetic/query-budget tests exist. Original-sale margin is not net profit or return-adjusted profit. |
++| Recover | Backup dump/media/snapshot/checksums → scratch DB/media restore → counts/totals/integrity comparison | Reproduced Linux failure from Windows CRLF, added LF checkout policy; synthetic records and product image restored successfully. |
++
++Python symbols in the tables are under `apps/` unless a full path is shown.
++
++## Feature audit
++
++### Catalogue, suppliers and inventory
++
++| Feature | Importance | Status / files or screens | Observed gap and business impact | Dependencies | Priority |
++|---|---|---|---|---|---|
++| Product CRUD/archive/restore | Essential | Verified: products/views.py, forms.py, product screens | Historical sales retained; archived stock still needs operational handling | Existing product permissions | Maintain |
++| Categories/brands | Essential categories; useful brands | Partial: Product/Category/Brand, categories screen | Add/list exists; no dedicated rename/merge/delete flow | Reference/history rules | P2 |
++| SKUs | Essential | Verified: Product constraints, model tests | Case-insensitive uniqueness; no automatic allocation | Owner numbering convention if needed | Maintain |
++| Barcode search/scanning | Essential POS | Verified keyboard-wedge flow, fixed: ProductSearchView, invoice.js, new E2E tests | Exact scan could be displaced by name matches; scanner Enter before debounce and stale results could select wrong item. Fixed. Camera/labels absent | Physical device not tested | P0 fixed; camera P3 |
++| Variants | Useful | Partial workaround: separate Product SKUs | No parent/attribute/variant management | Actual size/colour assortment | P2 |
++| Units/fractional quantities | Essential whole units; conditional weighed goods | Partial: unit labels, integer models | “kg” is a label; 1.5 kg sales and unit conversion unsupported | Confirm weighed goods/precision | P1 if applicable |
++| Prices/cost/overrides | Essential | Verified: ProductForm, create_invoice, roles/audit | Catalogue price enforced; permissioned overrides. No customer price lists/scheduled promotions | Pricing/promotion policy | P2 extensions |
++| Suppliers | Essential | Verified basic CRUD/import/history; access fixed: suppliers/, supplier detail | Unauthorized supplier balances exposed through detail page; now hidden. Dedicated export missing | Supplier invoice read permission | P0 fixed; export P2 |
++| Purchase orders | Essential replenishment | Verified core, validation fixed: purchasing/models/forms/views/services, order screens | Costs/discounts/state needed service validation; duplicate products made receipt mapping ambiguous. New orders use one line/product | Review old duplicate orders before receiving | P0 fixed |
++| Goods receipt/partial receiving | Essential | Verified, relationships fixed: create_receipt/confirm_receipt, receipt screens | Wrong supplier/order/product links could fulfil wrong PO or misstate stock. Now validated; confirmation once-only | Valid PO lines/active supplier | P0 fixed |
++| Supplier invoice matching | Essential basic payable; useful three-way matching | Partial: SupplierInvoice/Line, bill screen | Identity/confirmed receipt now checked. No cumulative billed-quantity match; same receipt can support duplicate bills; global number rejects some different-supplier references | Partial billing/tolerance/numbering policy | P1 |
++| Supplier payments/dues | Essential | Verified recorded payments, retries fixed: pay_supplier_invoice, payables | Serialized token replays; unknown methods/conflicts rejected. No supplier credit note/payment reversal | Credit/reconciliation policy | P0 fixed; corrections P1 |
++| Stock ledger/tracking | Essential | Verified service workflows: inventory/services/models, reconciliation | Locked balances/DB checks; immutability is application-level, not protection from arbitrary SQL | Restricted DB privileges | Maintain; DB enforcement P2 |
++| Adjustments/damage | Essential | Verified supported forms: adjust_stock, movement screen | Reason/permission required; direct-service extreme inputs/type constraints not exhaustive | Approval thresholds if required | P2 |
++| Stock-takes | Essential | Verified controlled-count workflow, fixed: save_stocktake_counts/apply_stocktake, stock-take screens | Batch saves all-or-nothing; applied counts immutable through UI. Now rejects snapshot mismatch or any later movement for counted products, rolling back every correction; prior live-count safety claim corrected | Pause movements/start fresh session after conflicts; live-count design if needed | P0 fixed; live counts P2 |
++| Low stock/reorder | Essential | Verified on-screen: inventory filters/dashboard/low_stock report | Suggestion is twice threshold, not lead-time planning; no proactive notification delivery | Lead times/recipients | P2 |
++| Transfers/reservations | Not applicable to current single pool; conditional useful | Missing: no location/reservation model | Cannot transfer locations or reserve orders | Locations/reservation expiry policy | P1 if applicable, else P3 |
++| Batches/lots/serials | Optional; essential for relevant goods | Missing: product-level quantities only | Cannot trace a lot/unit, serial sale or recall | Actual product classes/traceability rules | P1 if applicable |
++| Expiry | Useful; essential perishables | Partial: Product.expiry_date, inventory expiry filter | One date per product; no receipt-lot expiry/FEFO or expired-sale blocking | Lot data/expiry-sale policy | P1 if applicable |
++
++### Checkout, customers and finance
++
++| Feature | Importance | Status / files or screens | Observed gap and business impact | Dependencies | Priority |
++|---|---|---|---|---|---|
++| POS/cart/search/checkout | Essential | Verified: billing screen, sales service/API, browser tests | Server-authoritative prices, stock and totals; no offline operation | Available backend/database | Maintain |
++| Held/resumed sales | Useful | Missing: no held cart model/storage | Navigation/reload loses unfinished cart | Cart ownership/privacy/retention; reservation decision | P2 |
++| Invoice numbering/duplicates | Essential | Verified, last-stock retry fixed: DocumentSequence/create_invoice/race tests | Retry previously could fail stock check after successful original sale consumed last units | Caller must provide token for replay protection | P0 fixed |
++| Discounts/decimal totals | Essential | Verified supported arithmetic; rounding fix: sales/calculations, core/money | Individual payments now rounded before credit checks; nonfinite money rejected. Browser floats remain preview only | Existing discount rules | P0 fixed |
++| Tax configuration/snapshots | Conditional essential | Functional generic calculator; not compliance verified: tax screens, Product/Invoice/InvoiceLine | Preserved pending settings/defaults/bulk rates/snapshots. Return tax credits absent; purchase tax assumptions need separate review | Jurisdiction/registration/product treatment | P1 applicability blocker |
++| Counter rounding/e-invoicing | Conditional essential | Missing: no rounding adjustment/MyInvois lifecycle | Cents rounding is not nearest-5-sen counter rounding; PDFs are not authority-validated e-invoices | Applicability, channels, official rules/credentials | P1 if applicable |
++| Invoice/receipt print/PDF | Essential | Verified: invoice_print.html, sales/pdf.py, export/browser tests | Branded invoice and words exist; no dedicated thermal/fiscal format | Printer/authority specifications | P2 customization |
++| Multiple/split/partial payments | Essential | Verified local recording; race fixed: payments/services/models, invoice screens | Cash/card/bank/UPI/other are classifications, not processor confirmation | Processor/terminal contract for integration | P0 fixed; integration P2 |
++| Returns/refunds/credit notes | Essential | Verified supported flow; controls fixed: returns/, payments/ | Manager approval, cumulative quantities, damaged/resellable movements and payouts atomic. No return submission token; pending quantities prevent over-return | Refund method/approval | P0 fixed; replay UX P2 |
++| Cancellation/reversal | Essential | Verified safeguards fixed: cancel_invoice/reverse_payment/admin regression | Blocks cancellation after approved zero-value return; prevents negative receipts, overpayment and changes to cancelled balances | Audited correction workflow | P0 fixed |
++| Returned sale with shipping | Essential supported rule | Verified fixed: recalculate_invoice/InvoiceDetailView/HTTP test | Outstanding nonrefundable shipping now has truthful status and can be collected | Existing shipping rule preserved | P0 fixed |
++| Exchanges | Useful | Partial workaround: return + independent new sale | No linked exchange or difference settlement | Exchange pricing/document policy | P2 |
++| Customer profiles/history | Essential | Verified: customers/, detail/invoice screens, API | Detail shows last 20 invoices; no dedicated paginated history | Invoice read permission | P2 UX |
++| Customer balances/credit limits | Essential credit trade | Verified, permission fixed: outstanding_for/CustomerForm/create_invoice | Cashier could change limits via HTML despite API protection. Now permissioned; checkout rereads customer under lock | Manager authority | P0 fixed |
++| Customer ledger | Essential credit trade | Verified supported postings: LedgerEntry/post_ledger_entry/ledger screen | Manual entries do not allocate invoices; ledger and invoice-based outstanding can differ | Allocation/write-off policy | P1 explain/reconcile |
++| Loyalty | Optional | Missing: no points/tier/redemption module | No program assumed | Earn/redeem/expiry policy | P3 |
++| Store credit/advances | Useful | Missing: overpayment blocked | No credits against future sales | Liability/refund/expiry/accounting policy | P2 |
++| Expenses | Essential for in-app operating profit; otherwise useful | Missing: no model/screens | Margin cannot be used as net profit | Categories, approval, external accounting ownership | P1 decision |
++| Register open/close/daily cash reconciliation | Essential staffed cash POS | Missing: daily collections only | No opening float/drawer/session, paid-in/out, counted cash, variance approval or close lock | Drawer/shift/variance policy | P1 |
++
++### Reports, security, settings and deployment
++
++| Feature | Importance | Status / files or screens | Observed gap and business impact | Dependencies | Priority |
++|---|---|---|---|---|---|
++| Dashboard | Useful | Verified role-aware display; partial data restrictions: DashboardView/dashboard.html | Shared query computes sales/customer figures even for some inventory roles | Define granular financial visibility | P2 |
++| Sales/purchase/inventory reports | Essential | Verified defined reports: reports/queries/views, accuracy/query tests | Dimension reports use original sales; current balance reports are not historical as-of snapshots | Agreed metric definitions | P1 definitions; P2 extensions |
++| Profit | Useful | Partial estimate: sales_by/profit-estimate | Latest-cost legacy estimates; returns/damaged cost/expenses absent. Added explicit original-sale limitation | Costing/expense policy | P1 if used for accounting |
++| Tax reports | Conditional essential | Partial: tax_summary/tax screens | Original invoice tax only; no credit-note tax ledger/filing output | Verified return/tax rules | P1 if filing from app |
++| Staff/RBAC | Essential | Verified core role matrix; bypass fixes: accounts, AppPermissionMixin, API perms | Six roles; self-lockout guard. No branch-specific authorization | Single-business assumption | P0 fixes; extensions conditional |
++| Financial admin safety | Essential | Verified fixed: HistoricalDocumentAdmin, transaction admin registrations | Generic admin could change/delete financial documents outside ledger/stock services. Now inspection-only even for superusers | Use business correction workflows | P0 fixed |
++| Approvals | Essential returns; useful elsewhere | Partial: ReturnDecisionView | No discount threshold/purchase/adjustment approval state machine; PO status changes lack dedicated audit event | Owner thresholds/separation of duties | P2 |
++| Audit log | Essential | Verified application-level: audit/ | Sensitive action history, not DB-level tamper resistance/hash chain/remote retention | Privileged access/retention policy | P2 |
++| Authentication/session/reset | Essential | Verified local controls; SMTP configured only: accounts/settings/axes | Lockout/session/CSRF tested; actual mail delivery untested. API tokens do not expire; token issuance needs explicit throttling review | SMTP/token lifecycle | P1 before public API use |
++| API/integrations | Useful | Verified limited API: api/ | Catalogue/stock reads, customers create/read, invoices create/read; no full purchase/return API, gateway, webhook/outbox | Integration contract | P2 |
++| Tenant/store isolation | Not applicable single business; essential SaaS/multi-store | Missing: no tenant/store FK | Authorized users see all business records; do not market as isolated multi-tenant software | Architecture and migration/backfill | P0 before such use |
++| Export/data visibility | Essential | Payment CSV leak fixed, broader policy partial: PaymentExportView/invoice/API | Refund CSV respects view_refund. Embedded refund history in invoice detail/print/API remains visible to invoice readers; owner must define intended policy | Visibility policy | P1 review |
++| Store settings/receipt customization | Essential basics; useful editor | Partial: settings.BUSINESS/tax settings/templates | Company/timezone/currency/notes mainly env/template edits; words formatter assumes Ringgit/Sen; no general receipt editor | Actual currency/branding/printer | P2 |
++| Import/export | Essential basic migration; useful operations | Verified supported files, partial round trip: core.imports/importers/export views | Additive stock on update; export stock header/metadata not round-trip safe. Supplier export absent. XLSX materializes rows before limit check; barcode/stale preview failures need friendlier handling | File budgets/add-vs-replace semantics | P1 hardening; P2 round trip |
++| Backup/recovery | Essential | Actual synthetic round trip verified; LF fix: scripts/*.sh/.gitattributes/data_snapshot | Compose does not schedule backups. Dump and manifest do not share a snapshot; pause writes during verification backup. Encryption/off-host and RPO/RTO unconfigured | Schedule/keys/retention/recovery targets | P0 LF fixed; P1 operations |
++| Production artifact/config | Essential | Build/checks verified; real TLS unverified: Dockerfile/Compose/Nginx/Gunicorn | Local HTTP != production TLS. Bound worker count for 768 MB; default follows host CPU. Proxy/IP trust, mail and monitoring need setup | Host/TLS/resources/SMTP | P1 launch preparation |
++| Release pipeline | Essential if used | Revision mismatch fixed; YAML parsed: .github/workflows/ci.yml/deploy.yml | CI could test another ref. Now resolves one SHA and tests/builds/publishes that SHA; no remote run/publication performed | GitHub reviewers/registry permissions | P0 fixed; remote run pending |
++| Performance/indexes | Essential | Existing query-budget tests pass; no new load claim: indexes/test_query_counts/Locust | Pagination/prefetch/indexes exist; icontains scans large catalogues; return summary repeats line queries | Real volume/EXPLAIN/load profile | P2 |
++| Responsive/accessibility | Essential | Browser smoke verified, partial accessibility review: app.css/base.html/mobile test | 375px smoke, labels/focus/skip link/reduced motion; no full WCAG/assistive audit; autocomplete active-descendant semantics incomplete | Devices/assistive tests | P2 |
++
++## Implemented stages
++
++1. **Financial integrity:** moved payment/refund/supplier token checks under invoice locks; bound tokens to operations; handled cross-invoice token conflicts safely; standardized reversal lock order and customer-before-receipt-sequence locking; blocked invalid reversals; fixed returned shipping, zero-value cancellation, last-stock replay, rounded split payments and nonfinite amounts.
++2. **Authorization and validation:** restricted credit-limit edits, supplier balance exposure, combined receive/bill shortcut, refund CSV and financial admin mutations; added purchase quantity/cost/discount/rate/state/supplier/document-link checks; reread confirmed receipts from DB; rejected duplicate/fractional returns; saved stock-take batches atomically.
++3. **Checkout and operation:** exact barcode/SKU priority, immediate scanner Enter, obsolete response rejection, visible search failures; immutable release SHA; LF checkout rule after reproducing script failure; honest original-sales report note; tests and formatting.
++
++Existing tax work was preserved and formatted without changing its rates/policy. Deterministic demo randomness is now explicitly marked as non-security use for Bandit.
++
++No dependencies added/removed. No schema migration introduced by this review. No live data, `.env`, credentials, Git identity, GitHub authentication, staging/index, commits or remote branches changed.
++
++## Practical roadmap and unanswered business questions
++
++### Critical fixes — implemented; release/rehearsal required
++
++Review the combined diff, run CI on the intended SHA, rehearse pending tax migrations on a restored copy, investigate inconsistent existing records and take a verified pre-release backup. The controlled-count workflow now enforces no intervening movements; pause movements and restart counts after conflicts. Do not use this single-business application for multi-tenant access.
++
++### Essential completion — next stage
++
++1. **Register close:** agree opening float, drawer ownership, tender scope, paid-in/out, reversal dates, blind counts, variance approval and reopening; then extend payments with immutable close snapshots and concurrent-close tests.
++2. **Supplier corrections/matching:** agree partial billing/tolerances/reference scope; match billed quantities against confirmed receipt lines, add credits/reversals, and reconcile old links before any backfill.
++3. **Counting operations:** adopt the enforced paused-movement workflow. If live counts are needed, design an explicit movement cutoff/recount process; subtracting from live stock alone does not preserve sales since the physical count.
++4. **Compliance applicability:** confirm jurisdiction, registrations, turnover/group circumstances, products and counter channels. Only then implement stored rounding/tax-credit adjustments and authority submission IDs/statuses with deterministic tests.
++5. **Operations:** bounded workers, TLS/cookies/proxy trust, SMTP, explicit token throttling/lifecycle, scheduled/alerted/off-host encrypted backups, recovery objectives and stricter XLSX/import budgets.
++6. **Financial definitions:** decide ownership of expenses/external accounting, manual-ledger allocation, return-adjusted margins and historical reports before changing accounting outputs.
++
++### Useful/later improvements
++
++Held carts without implicit reservation; lossless catalogue exports; receipt/thermal templates; large-PO entry; history pagination; barcode labels; measured query optimization; accessibility tests; configurable alerts; variants and authorized integrations. Loyalty/camera/offline are optional. Warehouses/transfers, lots/FEFO, serials and fractional stock require confirmed business need, stock-schema design and reviewed backfills.
++
++Specific questions still outstanding:
++
++- Is Malaysia the actual jurisdiction? Which registrations/product tax rules apply, what are turnover/group circumstances, and which transactions are over-the-counter?
++- Are goods weighed, perishable, batch/serial tracked, or stored at multiple locations?
++- Who owns/closes drawers and approves variances/reopening? Are reversals attributed to action date or original payment date?
++- Can supplier invoices split receipts, what tolerances apply, and are references unique per supplier?
++- Should invoice readers see embedded refund histories, or should view_refund restrict all those surfaces?
++- Are expenses/customer credit liabilities maintained here or externally? What are the write-off/exchange/store-credit policies?
++- What are the production domain/TLS setup, SMTP/provider, payment processor, backup destination/retention and recovery objectives?
++
++Independent fixes proceeded without waiting for these answers.
++
++## Jurisdiction evidence and limitations
++
++The Malaysian inference comes from `config/settings.py`, not the computer's timezone. Official sources checked on 21 November 2026:
++
++- [HASiL e-Invoice timeline](https://www.hasil.gov.my/en/e-invois/pelaksanaan-e-invois-di-malaysia/garis-masa-pelaksanaan-e-invois/) was updated 30 August 2026 and lists implementation phases and an exemption below RM3 million. Actual owner applicability/detailed exceptions are unestablished; the app has no MyInvois validation/submission integration.
++- [Bank Negara Malaysia counter rounding](https://www.bnm.gov.my/-/introduction-of-a-rounding-mechanism-for-over-the-counter-payments) describes nearest-5-sen rounding on the final tax-inclusive bill, not each item. The app rounds cents only. No change was made without confirming channels and the stored financial adjustment design.
++
++These checks identify gaps, not compliance. Configurable GST labels, PDFs and arithmetic tests are not evidence of legal compliance. No historical tax information was inferred/backfilled.
++
++## Database and deployment preparation
++
++Already pending before this review: `apps/products/migrations/0002_taxconfiguration.py` and `apps/sales/migrations/0002_invoice_tax_label_invoice_tax_registration_number.py`. They add singleton tax settings and invoice label/registration snapshots. This review adds no migration; fresh migration and model consistency passed in isolation.
++
++Before production: backup/verify, rehearse `python manage.py migrate --noinput` and `python manage.py setup_roles`, review existing receipt/supplier links, refunds and reconciliations. Historical default tax labels cannot recover past registrations automatically; any correction needs source evidence and a separately reviewed/audited backfill. No automatic financial/stock repair was run.
++
++Deploy a specific tested image. Release images now use SHA tags and lowercase registry paths (required for the mixed-case repository name); host rollout must consume the same tag. Compose currently builds locally; it does not automatically switch to GHCR images. Real TLS, SMTP/processors, scheduled backups and remote Actions execution remain deployment work. With SSL redirect enabled, also verify the health probe actually reaches the database check rather than accepting an HTTP redirect. No production deployment/publication was performed.
++
++Existing stored invoice statuses are not automatically backfilled; the corrected calculation runs on later financial mutations. Review old fully-returned invoices with unpaid shipping before an explicitly audited status recalculation. Return completion now follows approved quantities, so fully crediting paid goods does not hide remaining free goods. Fully returning free goods also preserves an outstanding shipping balance. Historical pending returns with duplicated sale lines must be rejected and resubmitted correctly; approval now refuses them.
++
++## Verification results
++
++| Check | Actual result |
++|---|---|
++| Full suite: `pytest -n 4 --cov=apps --cov-report=term --cov-report=json:/tmp/retail-audit-coverage.json -q --tb=short` | **294 passed**, 170.49 seconds; unit/integration/API/security/concurrency/legacy characterization and real Chromium E2E included; no skips in final run |
++| Combined statement/branch coverage | **89%** (4,608 statements; 982 branches; management commands/migrations excluded by existing configuration) |
++| New regression coverage | 38 integration cases plus 2 Chromium cases; includes admin, money/credit/bulk error handling, zero-price/quantity-based returns, cancellation, purchasing links, count atomicity/movement conflicts, exact scans, stale search and four concurrent retry scenarios. Targeted integrity/HTTP suite also passed before the last bulk-price case: 83 tests |
++| Ruff lint / format | Passed; 169 files already formatted in final repository check |
++| Bandit | Passed, no findings; existing nosec-comment parser warnings remain |
++| `pip-audit -r requirements/base.txt --strict` | No known vulnerabilities reported on this run; not a future guarantee |
++| Django system check / migration consistency | Passed / no model changes detected |
++| Production `check --deploy --fail-level WARNING` | Passed with isolated production-like environment; existing deliberate HSTS preload warning silenced |
++| Fresh migrations and role setup | Passed on disposable PostgreSQL 16 |
++| Production image | `retail-audit:20261121` built, including manifest static collection; runtime smoke passed: UID 10001, read-only filesystem, healthy DB-backed probe and HTTP 200 login; LF recovery scripts confirmed inside image; no push |
++| Backup/restore | Checksums, PostgreSQL restore, record counts/totals, stock/invoice/orphan checks and synthetic product-image presence passed |
++| Compose / workflow YAML | Configuration validated; workflow YAML parsed; remote Actions execution not performed |
++| Static typing / frontend build | Not configured / no Node frontend build; production collectstatic exercised |
++| Full load/DAST/physical hardware | Not run; query budgets and synthetic concurrency are not production load certification; physical scanner/printer/terminal not tested |
++
++Initial security subprocess checks failed because the Windows checkout's `.env` supplied HTTP development cookie settings and a secret when the test removed its environment value. Final tests used a source copy excluding `.env`/credentials/data. An intermediate purchasing test exposed a stale receipt object in the new validation; authoritative DB reread fixed it. Linux recovery initially failed on CRLF; normalized scripts plus `.gitattributes` fixed that. Final results above are after these corrections.
++
++## File accounting and Git review
++
++Created for this review: `.gitattributes`, `apps/core/admin.py`, `tests/integration/test_integrity_controls.py`, `tests/e2e/test_checkout_integrity.py`, this report and evidence snapshots under `docs/evidence/`.
++
++Modified implementation files: payment services/views; sales services/views/admin; purchasing services/views/admin; returns services/admin; inventory services/views; customer forms/views/admin; supplier views; product lookup; reports/queries; static/js/invoice.js; inventory/product/supplier templates; CI/deploy workflows; existing E2E retail workflow; seed_demo's Bandit annotation. Updated docs/BUSINESS_RULES.md and docs/SECURITY.md to correct earlier safety claims and link this review. Recovery scripts were normalized to LF; Git may show no text diff because their committed content was already LF.
++
++Pre-existing changes retained (some formatted): `.env.example`, README.md, accounts/roles.py, core/context_processors.py, seed_demo.py, products/forms.py/importers.py/models.py and new tax modules/migration, sales/calculations.py/models.py/pdf.py/services.py and tax snapshot migration, config/urls.py, docker-compose.yml, invoice.js, base/sales/tax templates, test_calculations.py and tax tests, scripts/start-local.ps1. Shared files contain both kinds of work. The final status/diff includes both; do not attribute the complete diff to this review.
++
++The complete final inventory/status and diff snapshots are supplied in `docs/evidence/retail-review-status.txt` and `docs/evidence/retail-review.diff`. The diff snapshot excludes its own generated contents. Disposable test/runtime containers and their synthetic data were removed after verification; the locally built image remains available. The original application stack/data were not started, stopped or migrated.
++
++Manual commands, after reviewing **both** this work and pre-existing changes (none executed by the assistant):
++
++```powershell
++git status --short
++git diff --stat
++git diff
++# Stages the whole reviewed working tree, including pre-existing tax/startup work.
++git add --all
++git diff --cached --stat
++git diff --cached --check
++git commit -m "Harden retail transaction integrity and operational controls"
++git push origin claude/jolly-albattani-lso27a
++```
++
++To split commits, use interactive `git add -p` and explicit new-file paths instead. Include the pending tax modules/templates/migrations with their dependent changes. No staging/commit/push/authentication commands were executed during this task.
+diff --git a/docs/evidence/retail-review-status.txt b/docs/evidence/retail-review-status.txt
+new file mode 100644
+index 0000000..04ca7a0
+--- /dev/null
++++ b/docs/evidence/retail-review-status.txt
+@@ -0,0 +1,66 @@
++ M .env.example
++ M .github/workflows/ci.yml
++ M .github/workflows/deploy.yml
++ M README.md
++ M apps/accounts/roles.py
++ M apps/core/context_processors.py
++ M apps/core/management/commands/seed_demo.py
++ M apps/core/money.py
++ M apps/customers/admin.py
++ M apps/customers/forms.py
++ M apps/customers/views.py
++ M apps/inventory/services.py
++ M apps/inventory/views.py
++ M apps/payments/services.py
++ M apps/payments/views.py
++ M apps/products/forms.py
++ M apps/products/importers.py
++ M apps/products/models.py
++ M apps/products/views.py
++ M apps/purchasing/admin.py
++ M apps/purchasing/services.py
++ M apps/purchasing/views.py
++ M apps/reports/queries.py
++ M apps/returns/admin.py
++ M apps/returns/services.py
++ M apps/sales/admin.py
++ M apps/sales/calculations.py
++ M apps/sales/models.py
++ M apps/sales/pdf.py
++ M apps/sales/services.py
++ M apps/sales/views.py
++ M apps/suppliers/views.py
++ M config/urls.py
++ M docker-compose.yml
++ M docs/BUSINESS_RULES.md
++ M docs/SECURITY.md
++ M scripts/backup.sh
++ M scripts/restore.sh
++ M scripts/verify_restore.sh
++ M static/js/invoice.js
++ M templates/base.html
++ M templates/inventory/stock.html
++ M templates/products/detail.html
++ M templates/sales/create.html
++ M templates/sales/detail.html
++ M templates/sales/invoice_print.html
++ M templates/suppliers/detail.html
++ M tests/e2e/test_ui_workflows.py
++ M tests/unit/test_calculations.py
++?? .gitattributes
++?? apps/core/admin.py
++?? apps/products/migrations/0002_taxconfiguration.py
++?? apps/products/tax_forms.py
++?? apps/products/tax_urls.py
++?? apps/products/tax_views.py
++?? apps/sales/migrations/0002_invoice_tax_label_invoice_tax_registration_number.py
++?? docs/RETAIL_REVIEW_2026-11-21.md
++?? docs/evidence/retail-review-status.txt
++?? docs/evidence/retail-review.diff
++?? scripts/start-local.ps1
++?? templates/taxes/index.html
++?? templates/taxes/summary.html
++?? tests/e2e/test_checkout_integrity.py
++?? tests/e2e/test_tax_workflow.py
++?? tests/integration/test_integrity_controls.py
++?? tests/integration/test_tax_workflow.py
+diff --git a/scripts/start-local.ps1 b/scripts/start-local.ps1
+new file mode 100644
+index 0000000..ea227c8
+--- /dev/null
++++ b/scripts/start-local.ps1
+@@ -0,0 +1,44 @@
++param([ValidateRange(1024, 65535)][int]$Port = 8000)
++
++$ErrorActionPreference = 'Stop'
++Set-Location (Split-Path -Parent $PSScriptRoot)
++
++function Invoke-Compose {
++    & docker compose @args
++    if ($LASTEXITCODE -ne 0) { throw "Docker Compose failed: $args" }
++}
++
++function New-LocalSecret {
++    $bytes = New-Object byte[] 48
++    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
++    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
++    return ([BitConverter]::ToString($bytes)).Replace('-', '').ToLowerInvariant()
++}
++
++if (-not (Test-Path -LiteralPath '.env')) {
++    $databasePassword = New-LocalSecret
++    $settings = Get-Content -LiteralPath '.env.example' -Raw
++    $settings = $settings -replace '(?m)^SECRET_KEY=.*$', ('SECRET_KEY=' + (New-LocalSecret))
++    $settings = $settings -replace '(?m)^POSTGRES_PASSWORD=.*$', ('POSTGRES_PASSWORD=' + $databasePassword)
++    $settings = $settings -replace '(?m)^DATABASE_URL=.*$', ('DATABASE_URL=postgres://retail:' + $databasePassword + '@localhost:5432/retail')
++    $settings = $settings -replace '(?m)^HTTP_BIND=.*$', 'HTTP_BIND=127.0.0.1'
++    $settings = $settings -replace '(?m)^HTTP_PORT=.*$', "HTTP_PORT=$Port"
++    $settings = $settings -replace '(?m)^CSRF_TRUSTED_ORIGINS=.*$', "CSRF_TRUSTED_ORIGINS=http://localhost:$Port,http://127.0.0.1:$Port"
++    $settings = $settings -replace '(?m)^SESSION_COOKIE_SECURE=.*$', 'SESSION_COOKIE_SECURE=false'
++    $settings = $settings -replace '(?m)^CSRF_COOKIE_SECURE=.*$', 'CSRF_COOKIE_SECURE=false'
++    $settings += "`nBOOTSTRAP_ADMIN_USERNAME=admin`nBOOTSTRAP_ADMIN_PASSWORD=$(New-LocalSecret)`n"
++    [System.IO.File]::WriteAllText((Join-Path (Get-Location) '.env'), $settings)
++    Write-Host 'Created local .env with random secrets. Administrator credentials are in .env.'
++} else {
++    Write-Host 'Using existing .env unchanged; its port, credentials and HTTP settings take precedence.'
++}
++
++Invoke-Compose config --quiet
++Invoke-Compose build
++Invoke-Compose up -d --wait db
++Invoke-Compose run --rm migrate
++Invoke-Compose run --rm --no-deps web python manage.py bootstrap_admin
++Invoke-Compose up -d --wait
++Invoke-Compose exec -T web python manage.py check
++Invoke-Compose ps
++Write-Host 'Local stack is running. Use HTTP_PORT from .env (default 8000).'
+diff --git a/templates/taxes/index.html b/templates/taxes/index.html
+new file mode 100644
+index 0000000..66eeb8a
+--- /dev/null
++++ b/templates/taxes/index.html
+@@ -0,0 +1,38 @@
++{% extends "base.html" %}{% load retail %}
++{% block title %}Tax{% endblock %}
++{% block content %}
++<div class="page-head"><h1>Tax</h1><div class="actions">
++{% if perms.reports.view_financial_reports %}<a class="btn" href="{% url 'taxes:summary' %}">Invoice tax summary</a>{% endif %}
++{% if perms.sales.add_invoice %}<a class="btn primary" href="{% url 'sales:create' %}">New sale</a>{% endif %}
++</div></div>
++<section class="card"><h2>How tax works</h2>
++<ol><li>Set the tax label, registration number and default rate for new products.</li>
++<li>Assign the correct rate to existing products below. Use 0% for untaxed products.</li>
++<li>Create a sale. Product rates are applied after discounts and added to the selling price.</li>
++<li>Review the saved rate and amount on the invoice, print view, PDF or tax summary.</li></ol>
++<p class="help">Saving settings does not change existing product rates. Product rate changes apply to future sales. Issued invoices retain their saved tax amounts and registration details.</p>
++</section>
++<div class="grid2"><section class="card"><h2>Tax settings</h2>
++{% if perms.products.change_taxconfiguration %}
++<form method="post">{% csrf_token %}<input type="hidden" name="action" value="settings">
++{% include "generic/form_fields.html" with form=settings_form %}
++<button class="btn primary" type="submit">Save tax settings</button></form>
++{% else %}<dl class="kv"><dt>Tax label</dt><dd>{{ configuration.label }}</dd><dt>Registration number</dt><dd>{{ configuration.registration_number|default:"Not configured" }}</dd><dt>Default for new products</dt><dd>{{ configuration.default_rate }}%</dd></dl>
++<p class="help">An administrator or manager can change tax settings and assign product rates.</p>{% endif %}
++</section><section class="card"><h2>Product rates in use</h2><table class="data"><thead><tr><th>Rate</th><th class="num">Products</th></tr></thead><tbody>
++{% for group in rate_groups %}<tr><td>{{ group.tax_rate }}%</td><td class="num">{{ group.count }}</td></tr>{% empty %}<tr><td colspan="2">No products yet.</td></tr>{% endfor %}
++</tbody></table><p class="help">Rates come from your product catalogue. Demo data created before this update may contain sample 6% and 10% rates. Select those products below to change the rate for future sales.</p></section></div>
++<h2>Assign product tax rates</h2>
++<form method="get" class="card"><div class="grid2">{% include "generic/form_fields.html" with form=product_filter %}</div><button class="btn" type="submit">Filter products</button> <a href="{% url 'taxes:index' %}">Clear filters</a></form>
++<form method="post">{% csrf_token %}<input type="hidden" name="action" value="products">
++{% if product_form.errors %}<div class="msg msg-error" role="alert">{{ product_form.errors }}</div>{% endif %}
++<div class="table-wrap"><table class="data"><thead><tr>{% if perms.products.change_taxconfiguration and perms.products.change_product %}<th>Select</th>{% endif %}<th>Product</th><th>Category</th><th class="money">Selling price</th><th class="num">Tax rate</th></tr></thead><tbody>
++{% for product in page_obj %}<tr>{% if perms.products.change_taxconfiguration and perms.products.change_product %}<td><input type="checkbox" name="products" value="{{ product.pk }}" aria-label="Select {{ product.sku }}"></td>{% endif %}
++<td><a href="{{ product.get_absolute_url }}">{{ product.name }}</a><br><small>{{ product.sku }}{% if not product.is_active %} · Archived{% endif %}</small></td><td>{{ product.category }}</td><td class="money">{{ product.selling_price|money }}</td><td class="num">{{ product.tax_rate }}%</td></tr>
++{% empty %}<tr><td colspan="5" class="empty">No matching products.</td></tr>{% endfor %}</tbody></table></div>
++{% if perms.products.change_taxconfiguration and perms.products.change_product %}<section class="card"><h3>Update selected products</h3>
++<div class="grid2"><div class="field"><label for="id_rate">New tax rate (%) *</label>{{ product_form.rate }}</div><div class="field"><label for="id_reason">Reason *</label>{{ product_form.reason }}</div></div>
++<p class="help">Only checked products on this page will be updated. Existing invoices keep their stored amounts.</p><button class="btn primary" type="submit">Apply rate to selected products</button></section>{% endif %}
++</form>
++<nav aria-label="Product pages">{% if page_obj.has_previous %}<a class="btn" href="?{{ querystring }}&amp;page={{ page_obj.previous_page_number }}">Previous</a>{% endif %} Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} {% if page_obj.has_next %}<a class="btn" href="?{{ querystring }}&amp;page={{ page_obj.next_page_number }}">Next</a>{% endif %}</nav>
++{% endblock %}
+diff --git a/templates/taxes/summary.html b/templates/taxes/summary.html
+new file mode 100644
+index 0000000..3dc2bcf
+--- /dev/null
++++ b/templates/taxes/summary.html
+@@ -0,0 +1,10 @@
++{% extends "base.html" %}{% load retail %}
++{% block title %}Invoice tax summary{% endblock %}
++{% block content %}
++<div class="page-head"><h1>Invoice tax summary</h1><div class="actions"><a class="btn" href="{% url 'taxes:index' %}">Tax settings &amp; products</a><a class="btn" href="?{{ querystring }}&amp;format=csv">Export CSV</a></div></div>
++<p class="help">Saved sales invoice amounts grouped by tax label and rate. Cancelled invoices are excluded. These are original invoice amounts: return credits and refunds are not deducted.</p>
++<form method="get" class="card"><div class="grid2">{% include "generic/form_fields.html" %}</div><button class="btn primary" type="submit">Show summary</button> <a href="{% url 'taxes:summary' %}">Clear dates</a></form>
++<div class="table-wrap"><table class="data"><thead><tr><th>Tax</th><th class="num">Rate</th><th class="num">Invoices</th><th class="money">Base after discounts</th><th class="money">Tax amount</th></tr></thead><tbody>
++{% for group in groups %}<tr><td>{{ group.invoice__tax_label }}</td><td class="num">{{ group.tax_rate }}%</td><td class="num">{{ group.invoices }}</td><td class="money">{{ group.taxable|money }}</td><td class="money">{{ group.tax|money }}</td></tr>{% empty %}<tr><td colspan="5" class="empty">No invoices in this period.</td></tr>{% endfor %}
++</tbody><tfoot><tr><th colspan="4">Total invoice tax</th><td class="money">{{ total_tax|money }}</td></tr></tfoot></table></div>
++{% endblock %}
+diff --git a/tests/e2e/test_checkout_integrity.py b/tests/e2e/test_checkout_integrity.py
+new file mode 100644
+index 0000000..8712bcb
+--- /dev/null
++++ b/tests/e2e/test_checkout_integrity.py
+@@ -0,0 +1,69 @@
++import pytest
++from playwright.sync_api import expect
++
++from apps.inventory.services import apply_movement
++from apps.sales.models import Invoice
++from tests.e2e.conftest import login
++
++pytestmark = [pytest.mark.e2e, pytest.mark.django_db(transaction=True)]
++
++
++def test_scanner_enter_before_debounce_completes_sale(page, cashier, make_product):
++    scanned = make_product(name="Z scanned product", barcode="SCAN123", stock=0)
++    apply_movement(scanned.pk, "opening", 2)
++    make_product(name="A SCAN123 name collision", stock=0)
++    login(page, cashier.username)
++    page.goto("/sales/new/")
++    page.fill("#mobile", "088888888")
++    page.fill("#name", "Scanner customer")
++    page.fill("#product-search", "SCAN123")
++    page.press("#product-search", "Enter")
++    expect(page.locator("#lines tbody tr .nm")).to_have_text(scanned.name)
++    page.click("#pay-full")
++    page.click("#save-sale")
++    page.wait_for_url("**/sales/*/")
++    inv = Invoice.objects.get()
++    assert inv.lines.get().product_id == scanned.pk
++    assert inv.total_paid == inv.total == 70
++    scanned.refresh_from_db()
++    assert scanned.stock_on_hand == 1
++    assert not page.js_errors
++
++
++def test_stale_product_search_cannot_replace_new_results(page, cashier, make_product):
++    old = make_product(name="Old product")
++    new = make_product(name="New product")
++    delayed = []
++
++    def intercept(route):
++        if "q=Old" in route.request.url:
++            delayed.append(route)
++        else:
++            route.continue_()
++
++    login(page, cashier.username)
++    page.goto("/sales/new/")
++    page.route("**/lookup/products/**", intercept)
++    with page.expect_request("**/lookup/products/?q=Old"):
++        page.fill("#product-search", "Old")
++    page.fill("#product-search", "New")
++    expect(page.locator("#search-results li").first).to_contain_text(new.name)
++    assert delayed
++    delayed[0].fulfill(
++        json={
++            "products": [
++                {
++                    "id": old.pk,
++                    "name": old.name,
++                    "sku": old.sku,
++                    "price": "70.00",
++                    "stock": 100,
++                }
++            ]
++        }
++    )
++    page.wait_for_timeout(100)
++    expect(page.locator("#search-results li").first).to_contain_text(new.name)
++    page.press("#product-search", "Enter")
++    expect(page.locator("#lines tbody tr .nm")).to_have_text(new.name)
++    assert not page.js_errors
+diff --git a/tests/e2e/test_tax_workflow.py b/tests/e2e/test_tax_workflow.py
+new file mode 100644
+index 0000000..a44753e
+--- /dev/null
++++ b/tests/e2e/test_tax_workflow.py
+@@ -0,0 +1,42 @@
++import pytest
++from playwright.sync_api import expect
++
++from apps.products.models import TaxConfiguration
++from apps.sales.models import Invoice
++from tests.e2e.conftest import login
++
++pytestmark = [pytest.mark.e2e, pytest.mark.django_db(transaction=True)]
++
++
++def test_tax_settings_assignment_billing_and_invoice(page, manager, product):
++    login(page, manager.username)
++    page.get_by_role("link", name="Tax", exact=True).click()
++    page.fill("#id_label", "Demo tax")
++    page.fill("#id_registration_number", "DEMO-REG")
++    page.fill("#id_default_rate", "6")
++    page.get_by_role("button", name="Save tax settings").click()
++    expect(page.locator(".msg-success")).to_contain_text("Tax settings saved")
++    page.get_by_role("checkbox", name=f"Select {product.sku}", exact=True).check()
++    page.fill("#id_rate", "6")
++    page.fill("#id_reason", "Testing tax setup")
++    page.get_by_role("button", name="Apply rate to selected products").click()
++    expect(page.locator(".msg-success")).to_contain_text("Tax updated for 1 products")
++    page.goto("/sales/new/")
++    page.fill("#mobile", "0123456789")
++    page.fill("#name", "Tax test customer")
++    page.fill("#product-search", product.sku)
++    page.locator("#search-results li").first.click()
++    expect(page.locator("#lines .rate")).to_have_text("6.00%")
++    expect(page.locator("#t-tax")).to_have_text("4.20")
++    expect(page.locator("#t-total")).to_have_text("74.20")
++    page.click("#pay-full")
++    page.click("#save-sale")
++    expect(page.get_by_role("heading", name="Invoice", exact=False).first).to_be_visible()
++    invoice = Invoice.objects.get()
++    assert str(invoice.tax_total) == "4.20"
++    assert invoice.tax_label == TaxConfiguration.current().label == "Demo tax"
++    expect(page.locator("main")).to_contain_text("6.00%")
++    printed = page.request.get(f"/sales/{invoice.pk}/print/")
++    assert "DEMO-REG" in printed.text() and "6.00%" in printed.text()
++    pdf = page.request.get(f"/sales/{invoice.pk}/pdf/")
++    assert pdf.ok and pdf.body().startswith(b"%PDF-")
+diff --git a/tests/integration/test_integrity_controls.py b/tests/integration/test_integrity_controls.py
+new file mode 100644
+index 0000000..9f8be74
+--- /dev/null
++++ b/tests/integration/test_integrity_controls.py
+@@ -0,0 +1,531 @@
++"""Regression tests for the retail architecture audit; all records are synthetic."""
++
++from concurrent.futures import ThreadPoolExecutor
++from decimal import Decimal as D
++from threading import Barrier
++
++import pytest
++from django.contrib import admin
++from django.db import connection
++from django.test import RequestFactory
++from django.urls import reverse
++from django.utils import timezone
++
++from apps.core.exceptions import BusinessRuleError
++from apps.core.money import q2, to_decimal
++from apps.customers.models import LedgerEntry
++from apps.customers.services import ledger_balance
++from apps.inventory.services import reconcile, save_stocktake_counts, start_stocktake
++from apps.payments.models import Payment
++from apps.payments.services import issue_refund, record_payment, reverse_payment
++from apps.purchasing import services as purchasing
++from apps.purchasing.models import GoodsReceipt, PurchaseOrder, SupplierInvoice, SupplierPayment
++from apps.returns.models import SalesReturn
++from apps.returns.services import approve_return, request_return
++from apps.sales.models import Invoice
++from apps.sales.services import cancel_invoice, create_invoice
++from apps.suppliers.models import Supplier
++
++
++def sale(manager, customer, product, **kwargs):
++    return create_invoice(
++        user=manager, customer=customer, lines=[{"product_id": product.pk, "quantity": 2}], **kwargs
++    )[0]
++
++
++def supplier_bill(manager, supplier, product):
++    return purchasing.record_supplier_invoice(
++        supplier=supplier,
++        invoice_number=None,
++        invoice_date=timezone.localdate(),
++        due_date=None,
++        user=manager,
++        lines=[{"product": product, "quantity": 10, "unit_cost": D("50")}],
++    )
++
++
++def return_items(invoice, manager, quantity):
++    return request_return(
++        invoice_id=invoice.pk,
++        reason="Returned goods",
++        user=manager,
++        lines=[
++            {"invoice_line_id": invoice.lines.get().pk, "quantity": quantity, "disposition": "resellable"}
++        ],
++    )
++
++
++@pytest.mark.parametrize("bad", ["NaN", "Infinity", "-Infinity", "invalid", D("NaN")])
++def test_non_finite_money_is_a_business_error(bad):
++    assert to_decimal(bad) is None
++    with pytest.raises(BusinessRuleError):
++        q2(bad)
++
++
++def test_non_finite_bulk_price_is_reported_without_changes(client_as, manager, product):
++    client = client_as(manager)
++    for value in ("Infinity", "NaN"):
++        response = client.post(
++            reverse("products:bulk"),
++            {
++                "selected": [product.pk],
++                "action": "price_percent",
++                "value": value,
++            },
++            follow=True,
++        )
++        assert response.status_code == 200 and b"Bulk update failed" in response.content
++        product.refresh_from_db()
++        assert product.selling_price == 70
++
++
++def test_exact_barcode_is_not_displaced_by_name_matches(client_as, cashier, make_product):
++    for index in range(13):
++        make_product(name=f"A barcode123 match {index}")
++    scanned = make_product(name="Z actual scanned product", barcode="barcode123")
++    results = client_as(cashier).get(reverse("sales:product_search"), {"q": "barcode123"}).json()["products"]
++    assert results[0]["id"] == scanned.pk and len(results) == 12
++
++
++def test_split_payment_rounding_cannot_bypass_credit_limit(manager, customer, product):
++    customer.credit_limit = D("139.97")
++    customer.save()
++    with pytest.raises(BusinessRuleError, match="credit limit"):
++        sale(
++            manager,
++            customer,
++            product,
++            payments=[
++                {"amount": D("0.014"), "method": "cash"},
++                {"amount": D("0.014"), "method": "cash"},
++            ],
++        )
++    assert not Invoice.objects.exists()
++
++
++def test_payment_token_is_bound_to_operation(manager, customer, product):
++    inv = sale(manager, customer, product)
++    record_payment(inv.pk, amount="10", method="cash", user=manager, idempotency_key="bound")
++    with pytest.raises(BusinessRuleError, match="different operation"):
++        record_payment(inv.pk, amount="20", method="cash", user=manager, idempotency_key="bound")
++    with pytest.raises(BusinessRuleError, match="different operation"):
++        issue_refund(inv.pk, amount="10", method="cash", user=manager, idempotency_key="bound")
++    other = sale(manager, customer, product)
++    with pytest.raises(BusinessRuleError, match="different operation"):
++        record_payment(other.pk, amount="10", method="cash", user=manager, idempotency_key="bound")
++    assert Payment.objects.count() == 1
++
++
++def test_reversals_cannot_make_net_received_negative(manager, customer, product):
++    inv = sale(manager, customer, product)
++    payment, _ = record_payment(inv.pk, amount="140", method="cash", user=manager)
++    issue_refund(inv.pk, amount="20", method="cash", user=manager)
++    with pytest.raises(BusinessRuleError, match="negative"):
++        reverse_payment(payment.pk, user=manager, reason="Error")
++    inv.refresh_from_db()
++    payment.refresh_from_db()
++    assert inv.total_paid == 120 and payment.status == "completed"
++    assert ledger_balance(customer.pk) == 20
++
++
++def test_return_refund_cannot_be_reversed_into_overpayment(manager, customer, product):
++    inv = sale(manager, customer, product)
++    record_payment(inv.pk, amount="140", method="cash", user=manager)
++    ret = return_items(inv, manager, 1)
++    approve_return(ret.pk, user=manager, refund_method="cash")
++    refund = Payment.objects.get(kind="refund")
++    with pytest.raises(BusinessRuleError, match="overpay"):
++        reverse_payment(refund.pk, user=manager, reason="Error")
++    assert ledger_balance(customer.pk) == 0
++
++
++def test_cancelled_invoice_refund_cannot_be_reversed(manager, customer, product):
++    inv = sale(manager, customer, product)
++    record_payment(inv.pk, amount="140", method="cash", user=manager)
++    refund = issue_refund(inv.pk, amount="140", method="cash", user=manager)
++    cancel_invoice(inv.pk, user=manager, reason="Cancelled sale")
++    with pytest.raises(BusinessRuleError, match="cancelled"):
++        reverse_payment(refund.pk, user=manager, reason="Error")
++    assert ledger_balance(customer.pk) == 0
++
++
++def test_unknown_refund_method_is_rejected(manager, customer, product):
++    inv = sale(manager, customer, product)
++    record_payment(inv.pk, amount="10", method="cash", user=manager)
++    with pytest.raises(BusinessRuleError, match="Unknown payment method"):
++        issue_refund(inv.pk, amount="5", method="unknown", user=manager)
++    assert not Payment.objects.filter(kind="refund").exists()
++
++
++def test_full_return_leaves_shipping_collectable_through_http(client_as, manager, customer, product):
++    inv = sale(manager, customer, product, shipping_charge=D("5"))
++    ret = return_items(inv, manager, 2)
++    approve_return(ret.pk, user=manager)
++    inv.refresh_from_db()
++    assert (inv.status, inv.payment_status, inv.balance_due) == ("Returned", "Unpaid", D("5"))
++    client = client_as(manager)
++    assert b"Record payment" in client.get(inv.get_absolute_url()).content
++    response = client.post(
++        reverse("payments:create", args=[inv.pk]),
++        {
++            "amount": "5",
++            "method": "cash",
++            "paid_on": timezone.localdate(),
++            "token": "shipping",
++        },
++    )
++    assert response.status_code == 302
++    inv.refresh_from_db()
++    assert (inv.status, inv.payment_status, inv.balance_due) == ("Returned", "Paid", D("0"))
++    assert ledger_balance(customer.pk) == 0
++
++
++def test_duplicate_or_fractional_return_lines_are_rejected(manager, customer, product):
++    inv = sale(manager, customer, product)
++    line = {"invoice_line_id": inv.lines.get().pk, "quantity": 1, "disposition": "resellable"}
++    with pytest.raises(BusinessRuleError, match="only once"):
++        request_return(invoice_id=inv.pk, reason="x", user=manager, lines=[line, line])
++    with pytest.raises(BusinessRuleError, match="whole numbers"):
++        return_items(inv, manager, D("1.5"))
++    assert inv.returns.count() == 0
++
++
++def test_zero_value_return_blocks_cancellation(manager, customer, make_product):
++    free = make_product(price="0", stock=10)
++    inv = sale(manager, customer, free, shipping_charge=D("5"))
++    approve_return(return_items(inv, manager, 1).pk, user=manager)
++    with pytest.raises(BusinessRuleError, match="has returns"):
++        cancel_invoice(inv.pk, user=manager, reason="x")
++    assert reconcile() == []
++    free.refresh_from_db()
++    assert free.stock_on_hand == 9
++
++
++def test_all_value_returned_does_not_hide_remaining_free_goods(client_as, manager, customer, make_product):
++    paid = make_product(price="10", stock=5)
++    free = make_product(price="0", stock=5)
++    inv, _ = create_invoice(
++        user=manager,
++        customer=customer,
++        lines=[
++            {"product_id": paid.pk, "quantity": 1},
++            {"product_id": free.pk, "quantity": 1},
++        ],
++    )
++    record_payment(inv.pk, amount="10", method="cash", user=manager)
++    paid_line = inv.lines.get(product=paid)
++    ret = request_return(
++        invoice_id=inv.pk,
++        reason="paid item",
++        user=manager,
++        lines=[
++            {"invoice_line_id": paid_line.pk, "quantity": 1, "disposition": "resellable"},
++        ],
++    )
++    approve_return(ret.pk, user=manager, refund_method="cash")
++    inv.refresh_from_db()
++    assert inv.status == "Completed" and inv.balance_due == 0
++    assert b"Return items" in client_as(manager).get(inv.get_absolute_url()).content
++    free_line = inv.lines.get(product=free)
++    ret = request_return(
++        invoice_id=inv.pk,
++        reason="free item",
++        user=manager,
++        lines=[
++            {"invoice_line_id": free_line.pk, "quantity": 1, "disposition": "resellable"},
++        ],
++    )
++    approve_return(ret.pk, user=manager)
++    inv.refresh_from_db()
++    assert inv.status == "Returned"
++    assert reconcile() == [] and ledger_balance(customer.pk) == 0
++
++
++def test_fully_free_goods_return_preserves_shipping_balance(manager, customer, make_product):
++    free = make_product(price="0", stock=10)
++    inv = sale(manager, customer, free, shipping_charge=D("5"))
++    approve_return(return_items(inv, manager, 2).pk, user=manager)
++    inv.refresh_from_db()
++    assert (inv.status, inv.payment_status, inv.balance_due) == ("Returned", "Unpaid", D("5"))
++
++
++def test_legacy_duplicate_return_lines_cannot_be_approved(manager, customer, product):
++    inv = sale(manager, customer, product)
++    ret = return_items(inv, manager, 1)
++    line = ret.lines.get()
++    ret.lines.create(invoice_line=line.invoice_line, quantity=1, disposition="resellable")
++    with pytest.raises(BusinessRuleError, match="repeats an invoice line"):
++        approve_return(ret.pk, user=manager)
++    inv.refresh_from_db()
++    product.refresh_from_db()
++    assert inv.returned_total == 0 and product.stock_on_hand == 98
++
++
++def test_cashier_cannot_change_credit_limits(client_as, cashier, manager, customer):
++    customer.credit_limit = D("100")
++    customer.save()
++    payload = {"name": customer.name, "mobile": customer.mobile, "is_active": "on", "credit_limit": "999999"}
++    client = client_as(cashier)
++    assert b'name="credit_limit"' not in client.get(reverse("customers:update", args=[customer.pk])).content
++    client.post(reverse("customers:update", args=[customer.pk]), payload)
++    customer.refresh_from_db()
++    assert customer.credit_limit == 100
++    client_as(manager).post(reverse("customers:update", args=[customer.pk]), payload)
++    customer.refresh_from_db()
++    assert customer.credit_limit == 999999
++
++
++def test_admin_cannot_bypass_transaction_services(client_as, admin_user, customer, product):
++    admin_user.is_staff = admin_user.is_superuser = True
++    admin_user.save()
++    request = RequestFactory().get("/admin/")
++    request.user = admin_user
++    for model in (
++        Invoice,
++        PurchaseOrder,
++        GoodsReceipt,
++        SupplierInvoice,
++        SupplierPayment,
++        SalesReturn,
++        LedgerEntry,
++    ):
++        registered = admin.site._registry[model]
++        assert registered.has_view_permission(request)
++        assert not registered.has_add_permission(request)
++        assert not registered.has_change_permission(request)
++        assert not registered.has_delete_permission(request)
++    inv = sale(admin_user, customer, product)
++    client = client_as(admin_user)
++    assert client.get(reverse("admin:sales_invoice_change", args=[inv.pk])).status_code == 200
++    assert (
++        client.post(reverse("admin:sales_invoice_change", args=[inv.pk]), {"total": "1"}).status_code == 403
++    )
++    assert (
++        client.post(reverse("admin:sales_invoice_delete", args=[inv.pk]), {"post": "yes"}).status_code == 403
++    )
++    inv.refresh_from_db()
++    assert inv.total == 140 and inv.status == "Pending"
++
++
++def test_inventory_staff_cannot_create_supplier_bill_via_shortcut(client_as, inventory_staff, product):
++    response = client_as(inventory_staff).post(
++        reverse("purchasing:quick_receive", args=[product.pk]), {"quantity": "2", "unit_cost": "50"}
++    )
++    assert response.status_code == 403
++    assert SupplierInvoice.objects.count() == GoodsReceipt.objects.count() == 0
++
++
++def test_supplier_page_hides_bills_without_permission(client_as, inventory_staff, manager, supplier, product):
++    bill = supplier_bill(manager, supplier, product)
++    html = client_as(inventory_staff).get(supplier.get_absolute_url()).content.decode()
++    assert bill.invoice_number not in html and "Payable to supplier" not in html
++
++
++def test_refund_export_respects_refund_permission(client_as, cashier, manager, customer, product):
++    inv = sale(manager, customer, product)
++    record_payment(inv.pk, amount="10", method="cash", user=manager)
++    refund = issue_refund(inv.pk, amount="5", method="cash", user=manager)
++    client = client_as(cashier)
++    assert refund.receipt_no not in client.get(reverse("payments:export")).content.decode()
++    assert (
++        refund.receipt_no not in client.get(reverse("payments:export"), {"kind": "refund"}).content.decode()
++    )
++
++
++def test_receipts_require_matching_supplier_order_and_product(manager, supplier, product, make_product):
++    po = purchasing.create_purchase_order(
++        supplier=supplier,
++        order_date=timezone.localdate(),
++        expected_date=None,
++        user=manager,
++        lines=[{"product": product, "quantity": 5, "unit_cost": D("50")}],
++    )
++    other = Supplier.objects.create(name="Other supplier")
++    line = {"product": product, "quantity": 1, "unit_cost": D("50"), "po_line": po.lines.get()}
++    args = {"supplier": supplier, "receipt_date": timezone.localdate(), "user": manager, "purchase_order": po}
++    with pytest.raises(BusinessRuleError, match="different supplier"):
++        purchasing.create_receipt(**{**args, "supplier": other}, lines=[line])
++    with pytest.raises(BusinessRuleError, match="must match"):
++        purchasing.create_receipt(**args, lines=[{**line, "product": make_product()}])
++    with pytest.raises(BusinessRuleError, match="must match"):
++        purchasing.create_receipt(**args, lines=[{**line, "po_line": None}])
++    receipt = purchasing.create_receipt(**args, lines=[line])
++    # Confirming also validates persisted linkage, including legacy/admin-created drafts.
++    receipt.supplier = other
++    receipt.save()
++    with pytest.raises(BusinessRuleError, match="different supplier"):
++        purchasing.confirm_receipt(receipt.pk, manager)
++    product.refresh_from_db()
++    assert product.stock_on_hand == 100
++
++
++@pytest.mark.parametrize("quantity,cost", [(0, "50"), (D("1.5"), "50"), (1, "-1"), (1, "NaN")])
++def test_purchase_inputs_validate_before_writes(manager, supplier, product, quantity, cost):
++    with pytest.raises(BusinessRuleError):
++        purchasing.create_receipt(
++            supplier=supplier,
++            receipt_date=timezone.localdate(),
++            user=manager,
++            lines=[{"product": product, "quantity": quantity, "unit_cost": D(cost)}],
++        )
++    assert not GoodsReceipt.objects.exists()
++
++
++def test_order_discount_and_duplicate_products_are_rejected(manager, supplier, product):
++    args = {"supplier": supplier, "order_date": timezone.localdate(), "expected_date": None, "user": manager}
++    line = {"product": product, "quantity": 1, "unit_cost": D("50")}
++    with pytest.raises(BusinessRuleError, match="discount"):
++        purchasing.create_purchase_order(**args, lines=[line], discount=D("51"))
++    with pytest.raises(BusinessRuleError, match="one line per product"):
++        purchasing.create_purchase_order(**args, lines=[line, line])
++
++
++def test_supplier_invoice_requires_confirmed_matching_receipt(manager, supplier, product):
++    receipt = purchasing.create_receipt(
++        supplier=supplier,
++        receipt_date=timezone.localdate(),
++        user=manager,
++        lines=[{"product": product, "quantity": 1, "unit_cost": D("50")}],
++    )
++    args = {
++        "supplier": supplier,
++        "invoice_number": None,
++        "invoice_date": timezone.localdate(),
++        "due_date": None,
++        "receipt": receipt,
++        "user": manager,
++        "lines": [{"product": product, "quantity": 1, "unit_cost": D("50")}],
++    }
++    with pytest.raises(BusinessRuleError, match="Confirm"):
++        purchasing.record_supplier_invoice(**args)
++    receipt = purchasing.confirm_receipt(receipt.pk, manager)
++    other = Supplier.objects.create(name="Other supplier")
++    with pytest.raises(BusinessRuleError, match="different supplier"):
++        purchasing.record_supplier_invoice(**{**args, "supplier": other, "receipt": receipt})
++    assert not SupplierInvoice.objects.exists()
++
++
++def test_supplier_payment_token_and_method_validation(manager, supplier, product):
++    inv = supplier_bill(manager, supplier, product)
++    args = {
++        "amount": "10",
++        "method": "cash",
++        "paid_on": timezone.localdate(),
++        "user": manager,
++        "idempotency_key": "supplier-bound",
++    }
++    first = purchasing.pay_supplier_invoice(inv.pk, **args)
++    assert purchasing.pay_supplier_invoice(inv.pk, **args).pk == first.pk
++    with pytest.raises(BusinessRuleError, match="different operation"):
++        purchasing.pay_supplier_invoice(inv.pk, **{**args, "amount": "20"})
++    with pytest.raises(BusinessRuleError, match="Unknown payment method"):
++        purchasing.pay_supplier_invoice(inv.pk, **{**args, "method": "unknown", "idempotency_key": None})
++    assert SupplierPayment.objects.count() == 1
++
++
++def test_stocktake_count_batch_is_atomic_and_applied_counts_are_immutable(manager, product, make_product):
++    other = make_product()
++    st = start_stocktake("Audit count", manager)
++    lines = {ln.product_id: ln for ln in st.lines.all()}
++    with pytest.raises(BusinessRuleError, match="Invalid count"):
++        save_stocktake_counts(st.pk, {lines[product.pk].pk: "90", lines[other.pk].pk: "bad"}, user=manager)
++    assert not st.lines.filter(counted_quantity__isnull=False).exists()
++    assert save_stocktake_counts(st.pk, {lines[product.pk].pk: "90"}, user=manager, apply=True) == 1
++    with pytest.raises(BusinessRuleError, match="already applied"):
++        save_stocktake_counts(st.pk, {lines[product.pk].pk: "80"}, user=manager)
++    assert st.lines.get(product=product).counted_quantity == 90
++    assert reconcile() == []
++
++
++def test_stocktake_rejects_intervening_sale_without_overwriting_stock(
++    manager, customer, product, make_product
++):
++    other = make_product()
++    st = start_stocktake("Count before sale", manager)
++    create_invoice(user=manager, customer=customer, lines=[{"product_id": other.pk, "quantity": 1}])
++    counts = {line.pk: "90" for line in st.lines.all()}
++    with pytest.raises(BusinessRuleError, match="stock moved"):
++        save_stocktake_counts(st.pk, counts, user=manager, apply=True)
++    product.refresh_from_db()
++    other.refresh_from_db()
++    st.refresh_from_db()
++    assert (product.stock_on_hand, other.stock_on_hand, st.status) == (100, 99, "draft")
++    assert not st.lines.filter(counted_quantity__isnull=False).exists()
++    assert reconcile() == []
++
++
++def concurrent_calls(operation, workers=6):
++    barrier = Barrier(workers)
++
++    def run():
++        try:
++            barrier.wait(timeout=15)
++            return operation()
++        finally:
++            connection.close()
++
++    with ThreadPoolExecutor(max_workers=workers) as executor:
++        futures = [executor.submit(run) for _ in range(workers)]
++        return [f.result(timeout=30) for f in futures]
++
++
++@pytest.mark.django_db(transaction=True)
++def test_concurrent_payment_retry_records_exactly_once(manager, customer, product):
++    inv = sale(manager, customer, product)
++    results = concurrent_calls(
++        lambda: record_payment(
++            inv.pk, amount="140", method="cash", user=manager, idempotency_key="payment-race"
++        )
++    )
++    assert len({p.pk for p, _ in results}) == 1
++    assert sum(created for _, created in results) == 1
++    inv.refresh_from_db()
++    assert inv.total_paid == 140 and ledger_balance(customer.pk) == 0
++
++
++@pytest.mark.django_db(transaction=True)
++def test_concurrent_refund_retry_records_exactly_once(manager, customer, product):
++    inv = sale(manager, customer, product)
++    record_payment(inv.pk, amount="140", method="cash", user=manager)
++    results = concurrent_calls(
++        lambda: issue_refund(inv.pk, amount="140", method="cash", user=manager, idempotency_key="refund-race")
++    )
++    assert len({p.pk for p in results}) == 1
++    assert Payment.objects.filter(kind="refund").count() == 1
++    inv.refresh_from_db()
++    assert inv.total_paid == 0 and ledger_balance(customer.pk) == 140
++
++
++@pytest.mark.django_db(transaction=True)
++def test_concurrent_supplier_payment_retry_records_exactly_once(manager, supplier, product):
++    inv = supplier_bill(manager, supplier, product)
++    results = concurrent_calls(
++        lambda: purchasing.pay_supplier_invoice(
++            inv.pk,
++            amount="500",
++            method="cash",
++            paid_on=timezone.localdate(),
++            user=manager,
++            idempotency_key="supplier-race",
++        )
++    )
++    assert len({p.pk for p in results}) == 1
++    inv.refresh_from_db()
++    assert inv.paid_amount == 500 and SupplierPayment.objects.count() == 1
++
++
++@pytest.mark.django_db(transaction=True)
++def test_duplicate_sale_retry_succeeds_after_last_stock_is_sold(manager, customer, make_product):
++    product = make_product(stock=2)
++    results = concurrent_calls(
++        lambda: create_invoice(
++            user=manager,
++            customer=customer,
++            lines=[{"product_id": product.pk, "quantity": 2}],
++            submission_token="last-stock-retry",
++        )
++    )
++    assert len({inv.pk for inv, _ in results}) == 1
++    assert sum(created for _, created in results) == 1
++    assert Invoice.objects.count() == 1
++    assert reconcile() == []
+diff --git a/tests/integration/test_tax_workflow.py b/tests/integration/test_tax_workflow.py
+new file mode 100644
+index 0000000..a413fce
+--- /dev/null
++++ b/tests/integration/test_tax_workflow.py
+@@ -0,0 +1,142 @@
++from decimal import Decimal as D
++
++import pytest
++from django.urls import reverse
++
++from apps.audit.models import AuditLog
++from apps.products.forms import ProductForm
++from apps.products.importers import ProductImporter
++from apps.products.models import TaxConfiguration
++from apps.sales.services import cancel_invoice, create_invoice
++
++
++def settings_data(**overrides):
++    return {
++        "action": "settings",
++        "label": "Demo tax",
++        "registration_number": "DEMO-REG",
++        "default_rate": "6.00",
++        **overrides,
++    }
++
++
++def test_tax_settings_and_default_apply_to_new_products_only(client_as, manager, product):
++    response = client_as(manager).post(reverse("taxes:index"), settings_data())
++    assert response.status_code == 302
++    assert TaxConfiguration.current().default_rate == D("6")
++    assert ProductForm(user=manager).fields["tax_rate"].initial == D("6")
++    product.refresh_from_db()
++    assert product.tax_rate == D("0")
++    assert AuditLog.objects.filter(action="tax.settings_updated", user=manager).exists()
++
++
++@pytest.mark.parametrize("rate", ["-1", "100.01", "NaN", "Infinity", "6.123", "not-a-rate"])
++def test_invalid_tax_settings_are_rejected_without_writes(client_as, manager, rate):
++    response = client_as(manager).post(reverse("taxes:index"), settings_data(default_rate=rate))
++    assert response.status_code == 400
++    assert not TaxConfiguration.objects.exists()
++
++
++def test_cashier_can_review_tax_but_cannot_change_it(client_as, cashier, product):
++    client = client_as(cashier)
++    assert client.get(reverse("taxes:index")).status_code == 200
++    assert client.post(reverse("taxes:index"), settings_data()).status_code == 403
++    assert (
++        client.post(
++            reverse("taxes:index"),
++            {"action": "products", "products": [product.pk], "rate": "10", "reason": "tampering"},
++        ).status_code
++        == 403
++    )
++    assert client.get(reverse("taxes:summary")).status_code == 403
++
++
++def test_rate_assignment_is_audited_and_keeps_existing_invoice_snapshot(
++    client_as, manager, product, customer
++):
++    TaxConfiguration.objects.create(
++        pk=1, label="Original tax", registration_number="ORIGINAL", default_rate=D("0")
++    )
++    invoice, _ = create_invoice(
++        user=manager, customer=customer, lines=[{"product_id": product.pk, "quantity": 1}]
++    )
++    client = client_as(manager)
++    response = client.post(
++        reverse("taxes:index"),
++        {"action": "products", "products": [product.pk], "rate": "6", "reason": "Configure sample tax"},
++    )
++    assert response.status_code == 302
++    client.post(reverse("taxes:index"), settings_data())
++    invoice.refresh_from_db()
++    assert invoice.tax_total == D("0")
++    assert invoice.tax_label == "Original tax"
++    assert invoice.tax_registration_number == "ORIGINAL"
++    new_invoice, _ = create_invoice(
++        user=manager,
++        customer=customer,
++        lines=[{"product_id": product.pk, "quantity": 2}],
++        discount_percent=D("10"),
++    )
++    assert new_invoice.tax_total == D("7.56")
++    assert new_invoice.total == D("133.56")
++    assert new_invoice.lines.get().tax_rate == D("6")
++    assert new_invoice.tax_label == "Demo tax"
++    assert AuditLog.objects.filter(
++        action="product.tax_updated", target_id=str(product.pk), user=manager
++    ).exists()
++    html = client.get(reverse("sales:print", args=[new_invoice.pk])).content.decode()
++    assert "DEMO-REG" in html and "6.00%" in html and "133.56" in html
++
++
++def test_assignment_requires_selection_and_reason(client_as, manager, product):
++    client = client_as(manager)
++    assert (
++        client.post(reverse("taxes:index"), {"action": "products", "rate": "6", "reason": "test"}).status_code
++        == 400
++    )
++    assert (
++        client.post(
++            reverse("taxes:index"), {"action": "products", "products": [product.pk], "rate": "6"}
++        ).status_code
++        == 400
++    )
++    product.refresh_from_db()
++    assert product.tax_rate == D("0")
++
++
++def test_summary_uses_saved_rates_and_excludes_cancelled_invoices(client_as, manager, make_product, customer):
++    product = make_product(tax="6")
++    invoice, _ = create_invoice(
++        user=manager, customer=customer, lines=[{"product_id": product.pk, "quantity": 1}]
++    )
++    cancelled, _ = create_invoice(
++        user=manager, customer=customer, lines=[{"product_id": product.pk, "quantity": 2}]
++    )
++    cancel_invoice(cancelled.pk, user=manager, reason="Test cancelled invoice")
++    product.tax_rate = D("10")
++    product.save(update_fields=["tax_rate"])
++    client = client_as(manager)
++    response = client.get(reverse("taxes:summary"))
++    assert response.status_code == 200
++    assert response.context["total_tax"] == invoice.tax_total == D("4.20")
++    assert response.context["groups"][0]["tax_rate"] == D("6")
++    csv = client.get(reverse("taxes:summary"), {"format": "csv"})
++    assert csv.status_code == 200 and "4.20" in csv.content.decode()
++    assert (
++        client.get(reverse("taxes:summary"), {"start": "2026-12-31", "end": "2026-01-01"}).status_code == 400
++    )
++    assert client.get(reverse("taxes:summary"), {"start": "invalid", "format": "csv"}).status_code == 400
++
++
++def test_import_default_and_blank_update_preserve_existing_tax(manager, product):
++    TaxConfiguration.objects.create(pk=1, default_rate=D("6"))
++    importer = ProductImporter()
++    context = importer.build_context("create")
++    data, errors, _ = importer.validate_row(
++        {"sku": "NEW-TAX", "name": "New product", "selling_price": "100"}, "create", context
++    )
++    assert not errors and D(data["tax_rate"]) == D("6")
++    data, errors, _ = importer.validate_row(
++        {"sku": product.sku, "name": product.name, "selling_price": "100"}, "update", context
++    )
++    assert not errors and D(data["tax_rate"]) == product.tax_rate

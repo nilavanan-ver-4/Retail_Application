@@ -25,6 +25,13 @@ def render_pdf(template, context) -> bytes:
 
     css = (Path(settings.BASE_DIR) / "static" / "css" / "invoice.css").read_text(encoding="utf-8")
     html = render_to_string(
-        template, {**context, "logo_uri": logo_data_uri(), "for_pdf": True, "invoice_css": css}
+        template,
+        {
+            "BUSINESS": settings.BUSINESS,
+            **context,
+            "logo_uri": logo_data_uri(),
+            "for_pdf": True,
+            "invoice_css": css,
+        },
     )
     return HTML(string=html, url_fetcher=safe_fetcher()).write_pdf()

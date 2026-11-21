@@ -23,7 +23,8 @@
       <div class="field" style="position:relative"><label for="product-search">Add product (name, SKU or barcode)</label>
         <input id="product-search" data-url="{% url 'sales:product_search' %}" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="search-results" placeholder="Type to search…">
         <ul id="search-results" class="search-results" role="listbox" hidden></ul></div>
-      <div class="table-wrap"><table class="data line-table" id="lines"><thead><tr><th>Product</th><th class="num">Qty</th><th class="money">Price</th><th class="money">Discount</th><th class="money">Amount</th><th></th></tr></thead>
+      <p class="help">Prices exclude tax. Each product's saved tax rate is applied after discounts.{% if perms.products.view_taxconfiguration %} <a href="{% url 'taxes:index' %}">Review tax rates</a>.{% endif %}</p>
+      <div class="table-wrap"><table class="data line-table" id="lines"><thead><tr><th>Product</th><th class="num">Qty</th><th class="money">Price</th><th class="money">Discount</th><th class="money">Tax</th><th class="money">Line total</th><th></th></tr></thead>
         <tbody></tbody></table></div>
       <p id="no-lines" class="empty">No items yet. Search above to add products.</p>
     </section>

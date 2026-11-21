@@ -108,6 +108,14 @@ def apply_stocktake(stocktake_id, user):
         if line.counted_quantity is None:
             continue
         product = Product.objects.select_for_update().get(pk=line.product_id)
+        if (
+            product.stock_on_hand != line.system_quantity
+            or product.movements.filter(created_at__gt=st.created_at).exists()
+        ):
+            raise BusinessRuleError(
+                f"{product.name}: stock moved after this stock-take started. "
+                "Start a new count with stock movements paused; nothing was applied."
+            )
         delta = line.counted_quantity - product.stock_on_hand  # vs LIVE stock, not the snapshot
         if delta:
             apply_movement(
@@ -125,6 +133,29 @@ def apply_stocktake(stocktake_id, user):
     st.save(update_fields=["status", "applied_at", "updated_at"])
     log("stock.stocktake_applied", st, summary=f"{st.name}: {posted} corrections")
     return posted
+
+
+@transaction.atomic
+def save_stocktake_counts(stocktake_id, counts, *, user, apply=False):
+    """Save a complete submitted count batch under the same lock as application.
+
+    Validate every value before saving any, and prevent stale forms from editing
+    a count that another request already applied.
+    """
+    st = StockTake.objects.select_for_update().get(pk=stocktake_id)
+    if st.status != StockTake.Status.DRAFT:
+        raise BusinessRuleError("This stock-take was already applied.")
+    changed = []
+    for line in st.lines.all():
+        raw = str(counts.get(line.pk, "")).strip()
+        if not raw:
+            continue
+        if not raw.isascii() or not raw.isdigit() or int(raw) > 2147483647:
+            raise BusinessRuleError(f"Invalid count for line {line.pk}; use a non-negative whole number.")
+        line.counted_quantity = int(raw)
+        changed.append(line)
+    st.lines.model.objects.bulk_update(changed, ["counted_quantity"])
+    return apply_stocktake(st.pk, user) if apply else None
 
 
 def reconcile():

@@ -13,6 +13,6 @@
 <td class="num" data-label="On hand">{{ p.stock_on_hand }}</td><td data-label="Unit">{{ p.unit }}</td><td class="num" data-label="Reorder at">{{ p.reorder_level }}</td><td data-label="Level">{{ p.availability_level }}</td>
 <td data-label="Expiry">{{ p.expiry_date|date:"Y-m-d"|default:"–" }}</td>
 <td data-label="Status">{% if p.is_out_of_stock %}<span class="badge badge-bad">Out of stock</span>{% elif p.is_low_stock %}<span class="badge badge-warn">Low stock</span>{% else %}<span class="badge badge-ok">In stock</span>{% endif %}</td>
-<td>{% if perms.purchasing.receive_goods %}<a class="btn small" href="{% url 'purchasing:quick_receive' p.pk %}">Receive</a>{% endif %}</td></tr>
+<td>{% if perms.purchasing.receive_goods and perms.purchasing.add_supplierinvoice %}<a class="btn small" href="{% url 'purchasing:quick_receive' p.pk %}">Receive</a>{% elif perms.purchasing.add_goodsreceipt %}<a class="btn small" href="{% url 'purchasing:receipt_create' %}">New receipt</a>{% endif %}</td></tr>
 {% empty %}<tr><td class="empty" colspan="10">No products match.</td></tr>{% endfor %}</tbody></table></div>
 {% include "generic/pagination.html" %}{% endblock %}

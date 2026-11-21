@@ -10,6 +10,7 @@ from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from apps.audit.services import log as audit_log
 from apps.core.csvutil import csv_response
+from apps.core.exceptions import BusinessRuleError
 from apps.core.import_views import ImportPreviewView, ImportUploadView
 from apps.core.mixins import AppPermissionMixin, FilteredListView
 from apps.core.money import q2
@@ -152,7 +153,7 @@ class ProductBulkView(AppPermissionMixin, View):
             try:
                 for p in products:
                     self._apply(p, action, value)
-            except (ValueError, InvalidOperation, Category.DoesNotExist) as exc:
+            except (BusinessRuleError, ValueError, InvalidOperation, Category.DoesNotExist) as exc:
                 transaction.set_rollback(True)
                 messages.error(request, f"Bulk update failed: {exc or 'invalid value'}. Nothing was changed.")
                 return redirect("products:list")
@@ -266,10 +267,10 @@ class ProductSearchView(AppPermissionMixin, View):
 
     def get(self, request):
         q = request.GET.get("q", "").strip()
+        from django.db.models import Case, IntegerField, Q, Value, When
+
         qs = Product.objects.filter(is_active=True)
         if q:
-            from django.db.models import Q
-
             qs = qs.filter(Q(name__icontains=q) | Q(sku__icontains=q) | Q(barcode=q))
         else:
             qs = qs.none()
@@ -285,7 +286,13 @@ class ProductSearchView(AppPermissionMixin, View):
                         "stock": p.stock_on_hand,
                         "unit": p.unit,
                     }
-                    for p in qs.order_by("name")[:12]
+                    for p in qs.annotate(
+                        exact_match=Case(
+                            When(Q(barcode=q) | Q(sku__iexact=q), then=Value(0)),
+                            default=Value(1),
+                            output_field=IntegerField(),
+                        )
+                    ).order_by("exact_match", "name", "pk")[:12]
                 ]
             }
         )

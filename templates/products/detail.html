@@ -6,7 +6,7 @@
 {% if object.is_active %}<form class="inline" method="post" action="{% url 'products:archive' object.pk %}" data-confirm="Archive this product? It can no longer be sold; history is kept.">{% csrf_token %}<button class="btn danger" type="submit">Archive</button></form>
 {% else %}<form class="inline" method="post" action="{% url 'products:restore' object.pk %}">{% csrf_token %}<button class="btn" type="submit">Restore</button></form>{% endif %}{% endif %}
 {% if perms.inventory.adjust_stock %}<a class="btn" href="{% url 'inventory:adjust' %}?product={{ object.pk }}">Adjust stock</a>{% endif %}
-{% if perms.purchasing.receive_goods %}<a class="btn" href="{% url 'purchasing:quick_receive' object.pk %}">Receive stock</a>{% endif %}
+{% if perms.purchasing.receive_goods and perms.purchasing.add_supplierinvoice %}<a class="btn" href="{% url 'purchasing:quick_receive' object.pk %}">Receive stock</a>{% elif perms.purchasing.add_goodsreceipt %}<a class="btn" href="{% url 'purchasing:receipt_create' %}">New goods receipt</a>{% endif %}
 </div></div>
 <div class="cards">
   <div class="stat"><span>Selling price</span><b>{{ object.selling_price|money }}</b></div>

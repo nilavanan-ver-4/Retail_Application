@@ -48,6 +48,8 @@ class Invoice(TimeStampedModel):
     )
     shipping_charge = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO)
     tax_total = models.DecimalField(max_digits=12, decimal_places=2, default=ZERO)
+    tax_label = models.CharField(max_length=40, default="Tax")
+    tax_registration_number = models.CharField(max_length=80, blank=True)
     total = models.DecimalField(max_digits=12, decimal_places=2, help_text="Legacy final_amount")
 
     total_paid = models.DecimalField(

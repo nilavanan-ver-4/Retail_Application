@@ -25,6 +25,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-retail}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-retail}
       MEDIA_ROOT: /data/media
+      XDG_CACHE_HOME: /tmp/.cache # writable font cache for PDF rendering with read_only: true
       TRUST_PROXY_SSL_HEADER: "true"
       FORWARDED_ALLOW_IPS: "*"   # only nginx can reach this container (private network)
     depends_on:
@@ -41,7 +42,7 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     depends_on: [web]
-    ports: ["80:80"]          # terminate TLS here (or in front of it); see docs/OPERATIONS.md
+    ports: ["${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"] # local: HTTP_BIND=127.0.0.1, HTTP_PORT=8000
     volumes:
       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - media:/data/media:ro

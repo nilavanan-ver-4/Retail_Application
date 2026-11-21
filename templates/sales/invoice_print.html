@@ -6,17 +6,17 @@
 {% if not for_pdf %}<div class="toolbar no-print"><button type="button" data-print>Print</button> <a href="{% url 'sales:pdf' invoice.pk %}">Download PDF</a> <a href="{% url 'sales:detail' invoice.pk %}">Back</a></div>{% endif %}
 <header class="inv-head"><div class="co">
 {% if logo_uri %}<img src="{{ logo_uri }}" alt="" class="logo">{% elif not for_pdf %}<img src="{% static 'img/logo.jpg' %}" alt="" class="logo">{% endif %}
-<div><h1>{{ BUSINESS.NAME }}</h1><p>{{ BUSINESS.ADDRESS }}<br>Contact: {{ BUSINESS.CONTACT }} · {{ BUSINESS.EMAIL }}{% if BUSINESS.TAX_ID %}<br>Tax ID: {{ BUSINESS.TAX_ID }}{% endif %}</p></div></div>
-<div class="meta"><h2>{% if BUSINESS.TAX_ID and invoice.tax_total %}TAX INVOICE{% else %}INVOICE{% endif %}</h2>
+<div><h1>{{ BUSINESS.NAME }}</h1><p>{{ BUSINESS.ADDRESS }}<br>Contact: {{ BUSINESS.CONTACT }} · {{ BUSINESS.EMAIL }}{% if invoice.tax_registration_number %}<br>Tax ID: {{ invoice.tax_registration_number }}{% endif %}</p></div></div>
+<div class="meta"><h2>{% if invoice.tax_registration_number and invoice.tax_total %}TAX INVOICE{% else %}INVOICE{% endif %}</h2>
 <table><tr><th>Invoice No.</th><td>{{ invoice.number }}</td></tr><tr><th>Date</th><td>{{ invoice.date }}</td></tr><tr><th>Sales by</th><td>{{ invoice.sold_by|default:"–" }}</td></tr>
 <tr><th>Status</th><td>{{ invoice.get_status_display }} / {{ invoice.payment_status }}</td></tr></table></div></header>
 {% if invoice.status == "Cancelled" %}<p class="void">CANCELLED</p>{% endif %}
 <section class="bill"><h3>Billing to</h3><p><strong>{{ invoice.customer_name }}</strong><br>{{ invoice.billing_address|linebreaksbr }}<br>Mobile: {{ invoice.customer_mobile }}</p></section>
-<table class="items"><thead><tr><th>S.No</th><th>Product</th><th class="r">Qty</th><th>Unit</th><th class="r">Price / unit</th><th class="r">Disc.</th>{% if invoice.tax_total %}<th class="r">{{ BUSINESS.TAX_LABEL }}</th>{% endif %}<th class="r">Amount ({{ BUSINESS.CURRENCY }})</th></tr></thead><tbody>
-{% for l in lines %}<tr><td>{{ forloop.counter }}</td><td>{{ l.description }}</td><td class="r">{{ l.quantity }}</td><td>{{ l.unit }}</td><td class="r">{{ l.unit_price|money:False }}</td><td class="r">{{ l.discount|money:False }}</td>{% if invoice.tax_total %}<td class="r">{{ l.tax_amount|money:False }} ({{ l.tax_rate }}%)</td>{% endif %}<td class="r">{{ l.net_amount|money:False }}</td></tr>{% endfor %}</tbody></table>
+<table class="items"><thead><tr><th>S.No</th><th>Product</th><th class="r">Qty</th><th>Unit</th><th class="r">Price / unit</th><th class="r">Line disc.</th>{% if invoice.discount_amount %}<th class="r">Invoice disc.</th>{% endif %}{% if invoice.tax_total %}<th class="r">{{ invoice.tax_label }}</th>{% endif %}<th class="r">Line total ({{ BUSINESS.CURRENCY }})</th></tr></thead><tbody>
+{% for l in lines %}<tr><td>{{ forloop.counter }}</td><td>{{ l.description }}</td><td class="r">{{ l.quantity }}</td><td>{{ l.unit }}</td><td class="r">{{ l.unit_price|money:False }}</td><td class="r">{{ l.discount|money:False }}</td>{% if invoice.discount_amount %}<td class="r">{{ l.allocated_discount|money:False }}</td>{% endif %}{% if invoice.tax_total %}<td class="r">{{ l.tax_amount|money:False }} ({{ l.tax_rate }}%)</td>{% endif %}<td class="r">{{ l.line_total|money:False }}</td></tr>{% endfor %}</tbody></table>
 <table class="totals"><tr><th>Subtotal</th><td>{{ invoice.subtotal|money }}</td></tr>
 {% if invoice.discount_amount %}<tr><th>Discount ({{ invoice.discount_percent }}%)</th><td>− {{ invoice.discount_amount|money }}</td></tr>{% endif %}
-{% if invoice.tax_total %}<tr><th>Total {{ BUSINESS.TAX_LABEL }}</th><td>{{ invoice.tax_total|money }}</td></tr>{% endif %}
+{% if invoice.tax_total %}<tr><th>Total {{ invoice.tax_label }}</th><td>{{ invoice.tax_total|money }}</td></tr>{% endif %}
 {% if invoice.shipping_charge %}<tr><th>Shipping</th><td>{{ invoice.shipping_charge|money }}</td></tr>{% endif %}
 <tr class="grand"><th>Total</th><td>{{ invoice.total|money }}</td></tr>
 {% if invoice.total_paid %}<tr><th>Paid</th><td>{{ invoice.total_paid|money }}</td></tr><tr><th>Balance due</th><td>{{ invoice.balance_due|money }}</td></tr>{% endif %}</table>

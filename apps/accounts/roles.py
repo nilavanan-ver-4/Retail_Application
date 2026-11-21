@@ -18,7 +18,12 @@ def _crud(app, model, actions="add change view"):
     return [f"{app}.{a}_{model}" for a in actions.split()]
 
 
-_PRODUCT_READ = ["products.view_product", "products.view_category", "products.view_brand"]
+_PRODUCT_READ = [
+    "products.view_product",
+    "products.view_category",
+    "products.view_brand",
+    "products.view_taxconfiguration",
+]
 _CUSTOMER_FULL = _crud("customers", "customer") + _crud("customers", "ledgerentry", "view")
 _REPORT_ALL = [
     "reports.view_sales_reports",
@@ -41,6 +46,7 @@ ROLE_PERMISSIONS = {
         "returns.add_salesreturn",
     ],
     INVENTORY: [
+        "products.view_taxconfiguration",
         *_crud("products", "product"),
         *_crud("products", "category"),
         *_crud("products", "brand"),
@@ -104,6 +110,7 @@ ROLE_PERMISSIONS[MANAGER] = sorted(
             "inventory.adjust_stock",
             "reports.view_audit_reports",
             "audit.view_auditlog",
+            "products.change_taxconfiguration",
         ]
     )
 )

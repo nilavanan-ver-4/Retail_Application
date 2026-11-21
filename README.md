@@ -18,6 +18,7 @@ app, with the legacy data and business rules preserved.
 
 | Document | Contents |
 |---|---|
+| [docs/RETAIL_REVIEW_2026-11-21.md](docs/RETAIL_REVIEW_2026-11-21.md) | Current end-to-end feature audit, integrity fixes, 294-test verification, remaining gaps and implementation roadmap |
 | [docs/AUDIT.md](docs/AUDIT.md) | Feature inventory of the Flask app, route mapping, defects & vulnerabilities found |
 | [docs/MIGRATION.md](docs/MIGRATION.md) | Data-migration strategy, schema mapping, checklist, assumptions, intentional behaviour changes, rollback |
 | [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md) | Money, tax, stock, payment, return and report definitions |
@@ -48,6 +49,30 @@ templates/ static/ tests/ scripts/ docker/ docs/ legacy_flask/ samples/
 ```
 
 ## Quick start (development)
+
+For a local Docker installation on Windows with Docker Desktop running:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start-local.ps1
+```
+
+On first run this creates a git-ignored `.env` with random secrets, binds the app to
+http://127.0.0.1:8000, builds the image, waits for PostgreSQL, applies migrations,
+sets up roles and the first administrator, then starts and checks the stack.
+Find the login credentials in `.env` under `BOOTSTRAP_ADMIN_USERNAME` and
+`BOOTSTRAP_ADMIN_PASSWORD`. Existing `.env` files are preserved; ensure they contain
+the required database and bootstrap settings. Use `-Port 8080` on first run to choose
+another port. Local HTTP uses secure-cookie flags set to `false`; use `true` with HTTPS
+in production. The production Compose defaults remain port 80 on all interfaces.
+
+```powershell
+docker compose logs --tail 100 web nginx   # inspect logs
+docker compose stop                      # stop; keep database and media
+docker compose up -d --wait               # restart
+```
+
+Database and uploaded media persist in Docker named volumes. Demo data is optional;
+the startup workflow creates an empty business database.
 
 Prerequisites: Python 3.13, PostgreSQL 14+ (16 recommended), `libpango` for PDFs (`apt install libpango-1.0-0 libpangoft2-1.0-0`).
 
@@ -94,6 +119,21 @@ Optional demo data (synthetic — never run on a real database):
 | `COMPANY_*`, `CURRENCY_SYMBOL`, `TAX_LABEL`, `TAX_DEFAULT_RATE` | Invoice branding and tax label | ASKER ENTERPRISE, RM, GST, 0 |
 
 ## Migrating the existing Flask data
+
+### Managing invoice tax
+
+Open **Tax** in the sidebar. Administrators and managers can set a tax label,
+registration number and the default rate for newly created products. Select existing
+products, enter a rate and a reason, then choose **Apply rate to selected products**.
+Use 0% for untaxed products. Prices exclude tax; tax is added after line and invoice
+discounts. Billing shows each line's rate, tax and total before saving.
+
+Issued invoices save their tax rates, label and registration number, so later settings
+changes do not rewrite invoice history. The invoice tax summary offers date filters
+and CSV export; it excludes cancelled invoices and shows original amounts before
+return credits or refunds. Demo seeding now defaults to 0% tax; use `seed_demo
+--tax-rate 6 ...` only when an explicit sample rate is wanted. Older demo records
+retain the sample rates they were created with.
 
 ```bash
 export LEGACY_DATABASE_URL=postgres://readonly_user:pw@host:5432/postgres   # the old database

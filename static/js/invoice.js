@@ -8,7 +8,7 @@
   var search = document.getElementById("product-search");
   var results = document.getElementById("search-results");
   var payRows = document.getElementById("pay-rows");
-  var active = -1, timer = null, current = [];
+  var active = -1, timer = null, current = [], searchVersion = 0;
   var METHODS = JSON.parse(document.getElementById("pay-methods").textContent);
 
   function money(n) { return (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2); }
@@ -28,11 +28,13 @@
       '<td class="num"><input class="qty" name="quantity" type="number" min="1" step="1" aria-label="Quantity" style="width:80px"></td>' +
       '<td class="money">' + priceCell + '</td>' +
       '<td class="money"><input class="disc" name="discount" type="number" min="0" step="0.01" aria-label="Line discount" style="width:90px"></td>' +
+      '<td class="money tax"><span class="rate"></span><br><small class="tax-amount"></small></td>' +
       '<td class="money amt">0.00</td>' +
       '<td><button type="button" class="btn small rm" aria-label="Remove line">✕</button></td>';
     tr.querySelector('[name=product_id]').value = p.id;
     tr.querySelector(".nm").textContent = p.name;
     tr.querySelector(".stk").textContent = "In stock: " + (p.stock != null ? p.stock : "?");
+    tr.querySelector(".rate").textContent = (p.tax_rate || "0") + "%";
     tr.dataset.price = p.price;
     tr.querySelector(".qty").value = p.quantity || 1;
     tr.querySelector(".disc").value = p.discount || 0;
@@ -47,11 +49,21 @@
       var q = num(tr.querySelector(".qty").value);
       var price = cfg.override ? num(tr.querySelector(".price").value) : num(tr.dataset.price);
       var net = Math.max(r2(q * price) - num(tr.querySelector(".disc").value), 0);
-      tr.querySelector(".amt").textContent = money(net); nets.push([net, num(tr.dataset.tax)]); sub += net;
+      nets.push([net, num(tr.dataset.tax), tr]); sub += net;
     });
     sub = r2(sub);
     var disc = r2(sub * num(document.getElementById("discount_percent").value) / 100), tax = 0;
-    nets.forEach(function (n) { var share = sub ? r2(disc * n[0] / sub) : 0; tax += r2((n[0] - share) * n[1] / 100); });
+    var remaining = disc, remainingNet = sub;
+    nets.forEach(function (n, index) {
+      var share = index === nets.length - 1 ? remaining : (sub ? Math.min(r2(disc * n[0] / sub), remaining) : 0);
+      remainingNet = r2(remainingNet - n[0]);
+      share = Math.max(Math.min(share, n[0]), r2(remaining - remainingNet));
+      remaining = r2(remaining - share);
+      var lineTax = r2((n[0] - share) * n[1] / 100);
+      tax += lineTax;
+      n[2].querySelector(".tax-amount").textContent = money(lineTax);
+      n[2].querySelector(".amt").textContent = money(r2(n[0] - share + lineTax));
+    });
     var ship = num(document.getElementById("shipping_charge").value);
     var total = r2(sub - disc + tax + ship);
     document.getElementById("t-sub").textContent = money(sub); document.getElementById("t-disc").textContent = money(disc);
@@ -71,11 +83,13 @@
     payRows.appendChild(d); recalc();
   }
 
-  function doSearch() {
+  function doSearch(selectFirst) {
     var q = search.value.trim();
+    var version = ++searchVersion;
     if (!q) { results.hidden = true; search.setAttribute("aria-expanded", "false"); return; }
     fetch(search.dataset.url + "?q=" + encodeURIComponent(q), { credentials: "same-origin", headers: { "Accept": "application/json" } })
-      .then(function (r) { return r.json(); }).then(function (data) {
+      .then(function (r) { if (!r.ok) { throw new Error("Search failed"); } return r.json(); }).then(function (data) {
+        if (version !== searchVersion || search.value.trim() !== q) { return; }
         current = data.products; active = current.length ? 0 : -1; results.innerHTML = "";
         current.forEach(function (p, i) {
           var li = document.createElement("li"); li.setAttribute("role", "option"); li.setAttribute("aria-selected", i === 0 ? "true" : "false");
@@ -87,17 +101,30 @@
         });
         if (!current.length) { var li = document.createElement("li"); li.textContent = "No matching products"; results.appendChild(li); }
         results.hidden = false; search.setAttribute("aria-expanded", "true");
-      }).catch(function () { /* offline: keep typing */ });
+        if (selectFirst && current.length) { pick(0); }
+      }).catch(function () {
+        if (version !== searchVersion) { return; }
+        current = []; active = -1;
+        results.textContent = "Product search failed. Please try again.";
+        results.hidden = false; search.setAttribute("aria-expanded", "true");
+      });
   }
-  function pick(i) { if (current[i]) { addLine(current[i]); search.value = ""; results.hidden = true; search.focus(); } }
+  function pick(i) { if (current[i]) { addLine(current[i]); searchVersion++; current = []; active = -1; search.value = ""; results.hidden = true; search.setAttribute("aria-expanded", "false"); search.focus(); } }
   function mark() { Array.prototype.forEach.call(results.children, function (li, i) { li.setAttribute("aria-selected", i === active ? "true" : "false"); }); }
 
   search.dataset.url = document.getElementById("product-search").getAttribute("data-url");
-  search.addEventListener("input", function () { window.clearTimeout(timer); timer = window.setTimeout(doSearch, 180); });
+  search.addEventListener("input", function () {
+    searchVersion++; current = []; active = -1; results.hidden = true;
+    search.setAttribute("aria-expanded", "false");
+    window.clearTimeout(timer); timer = window.setTimeout(function () { doSearch(false); }, 180);
+  });
   search.addEventListener("keydown", function (e) {
     if (e.key === "ArrowDown") { e.preventDefault(); active = Math.min(active + 1, current.length - 1); mark(); }
     else if (e.key === "ArrowUp") { e.preventDefault(); active = Math.max(active - 1, 0); mark(); }
-    else if (e.key === "Enter") { e.preventDefault(); if (active >= 0) { pick(active); } }
+    else if (e.key === "Enter") {
+      e.preventDefault(); window.clearTimeout(timer);
+      if (active >= 0) { pick(active); } else if (search.value.trim()) { doSearch(true); }
+    }
     else if (e.key === "Escape") { results.hidden = true; }
   });
   search.addEventListener("blur", function () { window.setTimeout(function () { results.hidden = true; }, 120); });
@@ -120,6 +147,7 @@
   mobile.addEventListener("blur", function () {
     var v = mobile.value.trim(); if (!v) { return; }
     fetch(mobile.dataset.url + "?mobile=" + encodeURIComponent(v), { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (c) {
+      if (mobile.value.trim() !== v) { return; }
       var info = document.getElementById("cust-info");
       if (c.exists) {
         document.getElementById("name").value = c.name; document.getElementById("address").value = c.address || ""; document.getElementById("email").value = c.mail || "";

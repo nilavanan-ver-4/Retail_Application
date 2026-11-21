@@ -51,7 +51,10 @@ def test_full_retail_workflow(page, staff):
     expect(page.locator("h1")).to_contain_text("Apple")
     expect(page.locator(".stat", has_text="On hand")).to_contain_text("10 kg")
 
-    # 2. receive 20 more via the legacy 'add item' flow
+    # 2. A manager receives and records the bill using the combined shortcut.
+    # Inventory staff use draft goods receipts; they cannot create supplier bills.
+    page.click("text=Sign out")
+    login(page, "e2e_manager")
     page.goto(f"/purchasing/receive/{Product.objects.get().pk}/")
     page.fill("#id_quantity", "20")
     page.click("text=Receive & record supplier invoice")

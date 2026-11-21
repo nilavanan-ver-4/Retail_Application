@@ -42,6 +42,9 @@ def request_return(*, invoice_id, lines, reason, user, return_date=None):
     lines = [ln for ln in lines if ln["quantity"]]
     if not lines:
         raise BusinessRuleError("Select at least one item to return.")
+    ids = [ln["invoice_line_id"] for ln in lines]
+    if len(ids) != len(set(ids)):
+        raise BusinessRuleError("Select each invoice line only once per return.")
     ret = SalesReturn.objects.create(
         number=f"RET-{DocumentSequence.next_value('return'):06d}",
         invoice=invoice,
@@ -52,8 +55,8 @@ def request_return(*, invoice_id, lines, reason, user, return_date=None):
     for ln in lines:
         il = InvoiceLine.objects.select_for_update().get(pk=ln["invoice_line_id"], invoice=invoice)
         qty = int(ln["quantity"])
-        if qty <= 0:
-            raise BusinessRuleError("Return quantities must be positive.")
+        if qty != ln["quantity"] or qty <= 0:
+            raise BusinessRuleError("Return quantities must be positive whole numbers.")
         already = returned_quantity(il.pk)
         if already + qty > il.quantity:
             raise BusinessRuleError(
@@ -79,6 +82,11 @@ def approve_return(return_id, *, user, refund_method=None, note=""):
     if invoice.status == Invoice.Status.CANCELLED:
         raise BusinessRuleError("The invoice was cancelled; reject this return instead.")
     lines = list(ret.lines.select_related("invoice_line__product").order_by("invoice_line__product_id", "id"))
+    ids = [ln.invoice_line_id for ln in lines]
+    if len(ids) != len(set(ids)):
+        raise BusinessRuleError(
+            "This return repeats an invoice line; reject it and request a corrected return."
+        )
     products = lock_products([ln.invoice_line.product_id for ln in lines])
     credit_total = ZERO
     for ln in lines:
@@ -126,6 +134,10 @@ def approve_return(return_id, *, user, refund_method=None, note=""):
             invoice=invoice,
             description=f"Return credit {ret.number} - Invoice #{invoice.number}",
         )
+    # Make the approved quantities available to invoice recalculation inside this
+    # transaction. Any validation/refund failure rolls this status back as well.
+    ret.status = SalesReturn.Status.APPROVED
+    ret.save(update_fields=["status"])
     # money owed back = what the customer paid beyond the invoice's new effective total
     refund_due = max(ZERO, invoice.total_paid - invoice.effective_total)
     refunded = ZERO

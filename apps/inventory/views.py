@@ -17,7 +17,7 @@ from apps.products.models import Product
 
 from . import services
 from .forms import AdjustmentForm, StockTakeForm
-from .models import StockMovement, StockTake, StockTakeLine
+from .models import StockMovement, StockTake
 
 
 class StockFilter(df.FilterSet):
@@ -194,26 +194,20 @@ class StockTakeView(AppPermissionMixin, View):
 
             raise PermissionDenied
         st = get_object_or_404(StockTake, pk=pk)
-        if st.status != StockTake.Status.DRAFT:
-            messages.error(request, "This stock take was already applied.")
-            return redirect("inventory:stocktake", pk=pk)
-        for line in st.lines.all():
-            raw = request.POST.get(f"count_{line.pk}", "").strip()
-            if raw == "":
-                continue
-            if not raw.isdigit():
-                messages.error(request, f"Invalid count for line {line.pk}.")
-                return redirect("inventory:stocktake", pk=pk)
-            StockTakeLine.objects.filter(pk=line.pk).update(counted_quantity=int(raw))
-        if "apply" in request.POST:
-            try:
-                n = services.apply_stocktake(pk, request.user)
-            except BusinessRuleError as exc:
-                messages.error(request, str(exc))
-            else:
-                messages.success(request, f"Stock take applied: {n} correction(s) posted.")
+        try:
+            n = services.save_stocktake_counts(
+                pk,
+                {line.pk: request.POST.get(f"count_{line.pk}", "") for line in st.lines.all()},
+                user=request.user,
+                apply="apply" in request.POST,
+            )
+        except BusinessRuleError as exc:
+            messages.error(request, str(exc))
         else:
-            messages.success(request, "Counts saved.")
+            messages.success(
+                request,
+                f"Stock take applied: {n} correction(s) posted." if n is not None else "Counts saved.",
+            )
         return redirect("inventory:stocktake", pk=pk)
 
 

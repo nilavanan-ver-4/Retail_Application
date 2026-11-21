@@ -36,14 +36,26 @@ class Command(BaseCommand):
         p.add_argument("--customers", type=int, default=50)
         p.add_argument("--invoices", type=int, default=100)
         p.add_argument("--seed", type=int, default=42)
+        p.add_argument(
+            "--tax-rate",
+            type=Decimal,
+            default=Decimal("0.00"),
+            help="Explicit sample product tax percentage (default: 0).",
+        )
 
     @transaction.atomic
     def handle(self, *args, **o):
+        if (
+            not o["tax_rate"].is_finite()
+            or not Decimal("0") <= o["tax_rate"] <= Decimal("100")
+            or o["tax_rate"].as_tuple().exponent < -2
+        ):
+            raise CommandError("Tax rate must be between 0 and 100 with at most two decimal places.")
         if Product.objects.exists() and not o.get("force", False):
             raise CommandError(
                 "Database already has products; refusing to add demo data on top of real data."
             )
-        rnd = random.Random(o["seed"])
+        rnd = random.Random(o["seed"])  # nosec B311 - reproducible synthetic data, never credentials
         sync_roles()
         for username, role in (
             ("demo_admin", ADMINISTRATOR),
@@ -83,7 +95,7 @@ class Command(BaseCommand):
                 cost_price=cost,
                 selling_price=(cost * Decimal("1.35")).quantize(Decimal("0.01")),
                 reorder_level=rnd.randint(5, 30),
-                tax_rate=rnd.choice([Decimal("0"), Decimal("6"), Decimal("10")]),
+                tax_rate=o["tax_rate"],
             )
             apply_movement(
                 p.pk,

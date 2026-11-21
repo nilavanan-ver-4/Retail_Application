@@ -19,6 +19,17 @@ def test_legacy_example_matches_recorded_flask_totals():
     assert t.tax_total == D("0.00")
 
 
+def test_discount_rounding_does_not_make_a_free_line_tax_negative():
+    totals = compute_invoice(
+        [L(1, ".01", tax="100"), L(1, ".01", tax="100"), L(1, ".01", tax="100"), L(1, "0", tax="100")],
+        discount_amount=D(".01"),
+    )
+    assert sum(line.allocated_discount for line in totals.lines) == D(".01")
+    assert all(line.taxable >= 0 and line.tax >= 0 for line in totals.lines)
+    assert totals.tax_total == D(".02")
+    assert totals.total == D(".04")
+
+
 def test_no_discount_no_tax():
     t = compute_invoice([L(2, "70")])
     assert (t.subtotal, t.discount_amount, t.total) == (D("140.00"), D("0.00"), D("140.00"))

@@ -94,7 +94,12 @@ class CustomerDetailView(AppPermissionMixin, DetailView):
         return ctx
 
 
-class CustomerCreateView(AppPermissionMixin, CreateView):
+class CustomerFormMixin:
+    def get_form_kwargs(self):
+        return {**super().get_form_kwargs(), "user": self.request.user}
+
+
+class CustomerCreateView(CustomerFormMixin, AppPermissionMixin, CreateView):
     permission_required = "customers.add_customer"
     model = Customer
     form_class = CustomerForm
@@ -108,7 +113,7 @@ class CustomerCreateView(AppPermissionMixin, CreateView):
         return resp
 
 
-class CustomerUpdateView(AppPermissionMixin, UpdateView):
+class CustomerUpdateView(CustomerFormMixin, AppPermissionMixin, UpdateView):
     permission_required = "customers.change_customer"
     model = Customer
     form_class = CustomerForm

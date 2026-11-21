@@ -6,6 +6,11 @@ from .models import Customer, LedgerEntry
 
 
 class CustomerForm(forms.ModelForm):
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is None or not user.has_perm("customers.override_credit_limit"):
+            self.fields.pop("credit_limit")
+
     class Meta:
         model = Customer
         fields = [

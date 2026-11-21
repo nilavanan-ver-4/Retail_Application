@@ -52,6 +52,9 @@ class SupplierDetailView(AppPermissionMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         s = self.object
+        if not self.request.user.has_perm("purchasing.view_supplierinvoice"):
+            ctx["orders"] = s.purchase_orders.all()[:15]
+            return ctx
         ctx["payable"] = s.invoices.exclude(status="Cancelled").aggregate(
             t=Sum("total_amount"), p=Sum("paid_amount")
         )

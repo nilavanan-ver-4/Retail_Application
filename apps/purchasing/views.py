@@ -297,7 +297,7 @@ class ReceiptConfirmView(AppPermissionMixin, View):
 class QuickReceiveView(AppPermissionMixin, View):
     """Legacy ``/add_item``: add stock for one product and book the supplier invoice."""
 
-    permission_required = "purchasing.receive_goods"
+    permission_required = ("purchasing.receive_goods", "purchasing.add_supplierinvoice")
 
     def get(self, request, product_id):
         product = get_object_or_404(Product, pk=product_id)

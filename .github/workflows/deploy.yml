@@ -11,22 +11,37 @@ permissions:
   packages: write
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.revision.outputs.sha }}
+      image: ${{ steps.revision.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: "${{ inputs.ref }}"}
+      - id: revision
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
   ci:
+    needs: resolve
     uses: ./.github/workflows/ci.yml
+    with: {ref: "${{ needs.resolve.outputs.sha }}"}
 
   publish:
-    needs: ci
+    needs: [ci, resolve]
     runs-on: ubuntu-latest
     environment: production        # configure required reviewers on this environment
     steps:
       - uses: actions/checkout@v4
-        with: {ref: "${{ inputs.ref }}"}
+        with: {ref: "${{ needs.resolve.outputs.sha }}"}
       - uses: docker/login-action@v3
         with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ inputs.ref }}
+          tags: ${{ needs.resolve.outputs.image }}:${{ needs.resolve.outputs.sha }}
       # The release is then rolled out on the host with docs/OPERATIONS.md ("Deploy / roll back"):
       #   backup -> docker compose pull -> docker compose run --rm migrate -> docker compose up -d -> health check.

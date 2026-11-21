@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django import forms
 
-from .models import Brand, Category, Product
+from .models import Brand, Category, Product, TaxConfiguration
 
 
 class ProductForm(forms.ModelForm):
@@ -46,6 +46,11 @@ class ProductForm(forms.ModelForm):
         self.user = user
         if self.instance.pk:
             del self.fields["opening_stock"]
+        else:
+            self.fields["tax_rate"].initial = TaxConfiguration.current().default_rate
+        self.fields[
+            "tax_rate"
+        ].help_text = "Added to the selling price after discounts. Manage rates under Tax."
         if user is not None and not user.has_perm("products.view_cost_price"):
             # staff without the permission can neither see nor change purchase costs
             del self.fields["cost_price"]

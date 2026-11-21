@@ -14,7 +14,7 @@ ZERO = Decimal("0.00")
 def to_decimal(value, default=None):
     """Convert user input to Decimal, or return ``default`` when invalid."""
     if isinstance(value, Decimal):
-        return value
+        return value if value.is_finite() else default
     if value is None or (isinstance(value, str) and not value.strip()):
         return default
     try:
@@ -28,7 +28,15 @@ def to_decimal(value, default=None):
 
 def q2(value) -> Decimal:
     """Quantize to 2 decimal places, half-up."""
-    return Decimal(value).quantize(CENT, rounding=ROUND_HALF_UP)
+    from apps.core.exceptions import BusinessRuleError
+
+    amount = to_decimal(value)
+    if amount is None:
+        raise BusinessRuleError("Enter a finite monetary amount.")
+    try:
+        return amount.quantize(CENT, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise BusinessRuleError("The monetary amount is too large.") from None
 
 
 def pct_of(amount, percent) -> Decimal:

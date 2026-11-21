@@ -1,0 +1,38 @@
+{% extends "base.html" %}{% load retail %}
+{% block title %}Tax{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Tax</h1><div class="actions">
+{% if perms.reports.view_financial_reports %}<a class="btn" href="{% url 'taxes:summary' %}">Invoice tax summary</a>{% endif %}
+{% if perms.sales.add_invoice %}<a class="btn primary" href="{% url 'sales:create' %}">New sale</a>{% endif %}
+</div></div>
+<section class="card"><h2>How tax works</h2>
+<ol><li>Set the tax label, registration number and default rate for new products.</li>
+<li>Assign the correct rate to existing products below. Use 0% for untaxed products.</li>
+<li>Create a sale. Product rates are applied after discounts and added to the selling price.</li>
+<li>Review the saved rate and amount on the invoice, print view, PDF or tax summary.</li></ol>
+<p class="help">Saving settings does not change existing product rates. Product rate changes apply to future sales. Issued invoices retain their saved tax amounts and registration details.</p>
+</section>
+<div class="grid2"><section class="card"><h2>Tax settings</h2>
+{% if perms.products.change_taxconfiguration %}
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="settings">
+{% include "generic/form_fields.html" with form=settings_form %}
+<button class="btn primary" type="submit">Save tax settings</button></form>
+{% else %}<dl class="kv"><dt>Tax label</dt><dd>{{ configuration.label }}</dd><dt>Registration number</dt><dd>{{ configuration.registration_number|default:"Not configured" }}</dd><dt>Default for new products</dt><dd>{{ configuration.default_rate }}%</dd></dl>
+<p class="help">An administrator or manager can change tax settings and assign product rates.</p>{% endif %}
+</section><section class="card"><h2>Product rates in use</h2><table class="data"><thead><tr><th>Rate</th><th class="num">Products</th></tr></thead><tbody>
+{% for group in rate_groups %}<tr><td>{{ group.tax_rate }}%</td><td class="num">{{ group.count }}</td></tr>{% empty %}<tr><td colspan="2">No products yet.</td></tr>{% endfor %}
+</tbody></table><p class="help">Rates come from your product catalogue. Demo data created before this update may contain sample 6% and 10% rates. Select those products below to change the rate for future sales.</p></section></div>
+<h2>Assign product tax rates</h2>
+<form method="get" class="card"><div class="grid2">{% include "generic/form_fields.html" with form=product_filter %}</div><button class="btn" type="submit">Filter products</button> <a href="{% url 'taxes:index' %}">Clear filters</a></form>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="products">
+{% if product_form.errors %}<div class="msg msg-error" role="alert">{{ product_form.errors }}</div>{% endif %}
+<div class="table-wrap"><table class="data"><thead><tr>{% if perms.products.change_taxconfiguration and perms.products.change_product %}<th>Select</th>{% endif %}<th>Product</th><th>Category</th><th class="money">Selling price</th><th class="num">Tax rate</th></tr></thead><tbody>
+{% for product in page_obj %}<tr>{% if perms.products.change_taxconfiguration and perms.products.change_product %}<td><input type="checkbox" name="products" value="{{ product.pk }}" aria-label="Select {{ product.sku }}"></td>{% endif %}
+<td><a href="{{ product.get_absolute_url }}">{{ product.name }}</a><br><small>{{ product.sku }}{% if not product.is_active %} · Archived{% endif %}</small></td><td>{{ product.category }}</td><td class="money">{{ product.selling_price|money }}</td><td class="num">{{ product.tax_rate }}%</td></tr>
+{% empty %}<tr><td colspan="5" class="empty">No matching products.</td></tr>{% endfor %}</tbody></table></div>
+{% if perms.products.change_taxconfiguration and perms.products.change_product %}<section class="card"><h3>Update selected products</h3>
+<div class="grid2"><div class="field"><label for="id_rate">New tax rate (%) *</label>{{ product_form.rate }}</div><div class="field"><label for="id_reason">Reason *</label>{{ product_form.reason }}</div></div>
+<p class="help">Only checked products on this page will be updated. Existing invoices keep their stored amounts.</p><button class="btn primary" type="submit">Apply rate to selected products</button></section>{% endif %}
+</form>
+<nav aria-label="Product pages">{% if page_obj.has_previous %}<a class="btn" href="?{{ querystring }}&amp;page={{ page_obj.previous_page_number }}">Previous</a>{% endif %} Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} {% if page_obj.has_next %}<a class="btn" href="?{{ querystring }}&amp;page={{ page_obj.next_page_number }}">Next</a>{% endif %}</nav>
+{% endblock %}

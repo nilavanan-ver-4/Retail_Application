@@ -10,6 +10,41 @@ from apps.core.models import TimeStampedModel
 from .validators import validate_image_upload
 
 
+class TaxConfiguration(TimeStampedModel):
+    label = models.CharField(max_length=40, default="Tax")
+    registration_number = models.CharField(max_length=80, blank=True)
+    default_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0")), MaxValueValidator(Decimal("100"))],
+        help_text="Used for new products. Existing products and invoices keep their saved rates.",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(pk=1), name="tax_configuration_singleton"),
+            models.CheckConstraint(
+                condition=models.Q(default_rate__gte=0) & models.Q(default_rate__lte=100),
+                name="tax_default_0_100",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.default_rate}%)"
+
+    @classmethod
+    def current(cls):
+        from django.conf import settings
+
+        return cls.objects.filter(pk=1).first() or cls(
+            pk=1,
+            label=settings.BUSINESS["TAX_LABEL"],
+            registration_number=settings.BUSINESS["TAX_ID"],
+            default_rate=Decimal(settings.TAX_DEFAULT_RATE),
+        )
+
+
 class Category(models.Model):
     name = models.CharField(max_length=100)
 

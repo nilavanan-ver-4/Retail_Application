@@ -27,7 +27,7 @@
 * Several products in one invoice are locked in primary-key order (no deadlocks). Concurrency is tested (10 buyers, 5 units ⇒ exactly 5 succeed).
 * Goods enter stock **only** when a goods receipt is confirmed; confirmation is once-only; receiving more than a PO line's outstanding quantity is refused. The recorded unit cost updates the product cost (**costing method: latest purchase cost**, audited).
 * Valuation = `on hand × cost_price`. Ageing = FIFO estimate from inbound movements. Reconciliation compares each balance with the sum of its movements.
-* Stock-take: counts are compared with **live** stock when applied, so sales made during the count are not overwritten.
+* Stock-take: save submitted counts atomically and apply under stock-take/product locks. Counted products must have no movements since the session started and must still match the opening snapshot; otherwise the whole application is refused. Pause sales/receipts/adjustments for counted products and start a fresh count if a conflict is reported. This prevents overwriting intervening sales; movement-aware live counting is not implemented.
 * Low stock: `stock ≤ reorder_level`; out of stock: `≤ 0`. Legacy 1–5 availability scale retained as `availability_level`.
 
 ## Payments, refunds, returns

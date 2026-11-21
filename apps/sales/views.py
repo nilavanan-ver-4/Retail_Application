@@ -78,7 +78,7 @@ class InvoiceDetailView(AppPermissionMixin, DetailView):
         )
         ctx["cancel_form"] = CancelForm()
         ctx["can_pay"] = (
-            inv.status in (Invoice.Status.PENDING, Invoice.Status.COMPLETED)
+            inv.status != Invoice.Status.CANCELLED
             and inv.balance_due > 0
             and self.request.user.has_perm("payments.add_payment")
         )

@@ -1,5 +1,7 @@
 # Security review
 
+Current follow-up: [21 November 2026 retail review](RETAIL_REVIEW_2026-11-21.md) documents additional authorization, admin-mutation and financial-integrity findings and fixes, current verification, and open risks. The earlier blanket statement below that no high findings remain is historical, not a current certification.
+
 Method: OWASP Top 10 / ASVS-style review of the code, automated tests (`tests/integration/test_security.py`,
 `test_access_control.py`, `test_api.py`), static analysis (ruff `S` rules + Bandit), `pip-audit`, Django
 `check --deploy`, and manual dynamic probes against a production-mode Gunicorn instance holding **synthetic data

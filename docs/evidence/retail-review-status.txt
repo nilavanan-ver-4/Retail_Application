@@ -1,0 +1,66 @@
+ M .env.example
+ M .github/workflows/ci.yml
+ M .github/workflows/deploy.yml
+ M README.md
+ M apps/accounts/roles.py
+ M apps/core/context_processors.py
+ M apps/core/management/commands/seed_demo.py
+ M apps/core/money.py
+ M apps/customers/admin.py
+ M apps/customers/forms.py
+ M apps/customers/views.py
+ M apps/inventory/services.py
+ M apps/inventory/views.py
+ M apps/payments/services.py
+ M apps/payments/views.py
+ M apps/products/forms.py
+ M apps/products/importers.py
+ M apps/products/models.py
+ M apps/products/views.py
+ M apps/purchasing/admin.py
+ M apps/purchasing/services.py
+ M apps/purchasing/views.py
+ M apps/reports/queries.py
+ M apps/returns/admin.py
+ M apps/returns/services.py
+ M apps/sales/admin.py
+ M apps/sales/calculations.py
+ M apps/sales/models.py
+ M apps/sales/pdf.py
+ M apps/sales/services.py
+ M apps/sales/views.py
+ M apps/suppliers/views.py
+ M config/urls.py
+ M docker-compose.yml
+ M docs/BUSINESS_RULES.md
+ M docs/SECURITY.md
+ M scripts/backup.sh
+ M scripts/restore.sh
+ M scripts/verify_restore.sh
+ M static/js/invoice.js
+ M templates/base.html
+ M templates/inventory/stock.html
+ M templates/products/detail.html
+ M templates/sales/create.html
+ M templates/sales/detail.html
+ M templates/sales/invoice_print.html
+ M templates/suppliers/detail.html
+ M tests/e2e/test_ui_workflows.py
+ M tests/unit/test_calculations.py
+?? .gitattributes
+?? apps/core/admin.py
+?? apps/products/migrations/0002_taxconfiguration.py
+?? apps/products/tax_forms.py
+?? apps/products/tax_urls.py
+?? apps/products/tax_views.py
+?? apps/sales/migrations/0002_invoice_tax_label_invoice_tax_registration_number.py
+?? docs/RETAIL_REVIEW_2026-11-21.md
+?? docs/evidence/retail-review-status.txt
+?? docs/evidence/retail-review.diff
+?? scripts/start-local.ps1
+?? templates/taxes/index.html
+?? templates/taxes/summary.html
+?? tests/e2e/test_checkout_integrity.py
+?? tests/e2e/test_tax_workflow.py
+?? tests/integration/test_integrity_controls.py
+?? tests/integration/test_tax_workflow.py

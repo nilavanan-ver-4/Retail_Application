@@ -28,6 +28,7 @@
     {% if perms.payments.view_payment %}<li><a href="{% url 'payments:list' %}" {% if request.resolver_match.app_name == 'payments' %}aria-current="page"{% endif %}>Payments</a></li>{% endif %}
     {% if perms.returns.view_salesreturn %}<li><a href="{% url 'returns:list' %}" {% if request.resolver_match.app_name == 'returns' %}aria-current="page"{% endif %}>Returns</a></li>{% endif %}
     {% if perms.customers.view_customer %}<li><a href="{% url 'customers:list' %}" {% if request.resolver_match.app_name == 'customers' %}aria-current="page"{% endif %}>Customers</a></li>{% endif %}
+    {% if perms.products.view_taxconfiguration %}<li><a href="{% url 'taxes:index' %}" {% if request.resolver_match.app_name == 'taxes' %}aria-current="page"{% endif %}>Tax</a></li>{% endif %}
     <li class="group">Catalogue &amp; stock</li>
     {% if perms.products.view_product %}<li><a href="{% url 'products:list' %}" {% if request.resolver_match.app_name == 'products' %}aria-current="page"{% endif %}>Products</a></li>{% endif %}
     {% if perms.inventory.view_stockmovement or perms.products.view_product %}<li><a href="{% url 'inventory:stock' %}" {% if request.resolver_match.app_name == 'inventory' %}aria-current="page"{% endif %}>Inventory</a></li>{% endif %}

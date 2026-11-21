@@ -25,6 +25,7 @@ from apps.customers.services import outstanding_for, post_ledger_entry
 from apps.inventory.models import StockMovement
 from apps.inventory.services import apply_movement, lock_products
 from apps.payments.services import lock_invoice, recalculate_invoice, record_payment
+from apps.products.models import TaxConfiguration
 
 from .calculations import LineInput, compute_invoice
 from .models import Invoice, InvoiceLine
@@ -89,6 +90,12 @@ def create_invoice(
             raise BusinessRuleError("Quantities must be positive whole numbers.")
         wanted[ln["product_id"]] += int(qty)
     products = lock_products(wanted)
+    # A retry may have waited for the original sale's product locks. Recheck
+    # before testing the remaining stock (which may now be zero).
+    if submission_token:
+        existing = Invoice.objects.filter(submission_token=submission_token).first()
+        if existing:
+            return existing, False
     missing = set(wanted) - set(products)
     if missing:
         raise BusinessRuleError("One or more products no longer exist.")
@@ -128,24 +135,28 @@ def create_invoice(
         raise BusinessRuleError("Invoice total must be greater than zero.")
 
     # --- payments validated before anything is written ----------------------
-    pay_total = q2(sum((Decimal(p["amount"]) for p in payments), ZERO))
+    payments = [{**p, "amount": q2(p["amount"])} for p in payments]
+    pay_total = sum((p["amount"] for p in payments), ZERO)
     if any(Decimal(p["amount"]) <= 0 for p in payments):
         raise BusinessRuleError("Every payment amount must be greater than zero.")
     if pay_total > totals.total:
         raise BusinessRuleError(f"Payments ({pay_total}) exceed the invoice total ({totals.total}).")
 
     cust = _resolve_customer(customer, customer_mobile, customer_name, customer_address, customer_email)
+    # Lock before allocating document numbers, consistently for cash and credit sales.
+    # Re-read limits/activation so concurrent customer edits cannot use stale values.
+    cust = Customer.objects.select_for_update().get(pk=cust.pk)
     if not cust.is_active:
         raise BusinessRuleError(f"Customer {cust.name} is inactive.")
     unpaid = totals.total - pay_total
     if cust.credit_limit is not None and unpaid > 0 and not can_override_credit:
-        Customer.objects.select_for_update().get(pk=cust.pk)
         if outstanding_for(cust.pk) + unpaid > cust.credit_limit:
             raise BusinessRuleError(
                 f"This sale would exceed {cust.name}'s credit limit of {cust.credit_limit}."
             )
 
     # --- write ---------------------------------------------------------------
+    tax_configuration = TaxConfiguration.current()
     invoice = Invoice(
         number=_next_invoice_number(),
         customer=cust,
@@ -161,6 +172,8 @@ def create_invoice(
         discount_amount=totals.discount_amount,
         shipping_charge=totals.shipping,
         tax_total=totals.tax_total,
+        tax_label=tax_configuration.label,
+        tax_registration_number=tax_configuration.registration_number,
         total=totals.total,
         submission_token=submission_token or None,
     )
@@ -243,7 +256,7 @@ def cancel_invoice(invoice_id, *, user, reason):
     invoice = lock_invoice(invoice_id)
     if invoice.status == Invoice.Status.CANCELLED:
         raise BusinessRuleError("Invoice is already cancelled.")
-    if invoice.returned_total > 0:
+    if invoice.returned_total > 0 or invoice.returns.filter(status="approved").exists():
         raise BusinessRuleError("This invoice has returns; it cannot be cancelled.")
     if invoice.total_paid > 0:
         raise BusinessRuleError("Reverse or refund the payments received before cancelling.")

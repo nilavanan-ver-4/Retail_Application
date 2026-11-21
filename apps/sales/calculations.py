@@ -99,6 +99,7 @@ def compute_invoice(lines, *, discount_percent=ZERO, discount_amount=None, shipp
 
     # allocate the invoice discount across lines, last line takes the remainder
     remaining = disc_total
+    remaining_net = subtotal
     for idx, r in enumerate(results):
         if idx == len(results) - 1:
             alloc = remaining
@@ -106,6 +107,8 @@ def compute_invoice(lines, *, discount_percent=ZERO, discount_amount=None, shipp
             alloc = min(q2(disc_total * r.net / subtotal), remaining)
         else:
             alloc = ZERO
+        remaining_net -= r.net
+        alloc = max(min(alloc, r.net), remaining - remaining_net)
         r.allocated_discount = alloc
         remaining -= alloc
         r.taxable = r.net - alloc

@@ -209,6 +209,8 @@ def sales_by(d_from, d_to, dimension="product", limit=None, order="revenue"):
         "chart": ([str(r[0])[:12] for r in rows[:12]], [r[off + 1] for r in rows[:12]]),
         "notes": [
             "Revenue is after line and invoice discounts, before tax.",
+            "These are original sales figures. Return credits and damaged-return costs are not netted "
+            "into this breakdown or profit estimate; review the returns and net invoiced sales reports separately.",
             "Cost uses the cost price captured when each item was sold. Legacy (migrated) invoices use "
             "the product's current cost, so their profit is an estimate. Net profit is not calculated "
             "because no operating expenses are recorded.",

@@ -9,7 +9,7 @@ from apps.inventory.models import StockMovement
 from apps.inventory.services import apply_movement
 from apps.suppliers.models import Supplier
 
-from .models import Category, Product
+from .models import Category, Product, TaxConfiguration
 
 
 def _dec(value, field, errors, default=None, minimum=Decimal("0")):
@@ -43,9 +43,12 @@ class ProductImporter(BaseImporter):
     )
 
     def build_context(self, mode):
+        products = list(Product.objects.only("sku", "tax_rate"))
         return {
-            "skus": {p.sku.lower(): p.pk for p in Product.objects.only("sku")},
+            "skus": {p.sku.lower(): p.pk for p in products},
+            "tax_rates": {p.pk: p.tax_rate for p in products},
             "suppliers": set(Supplier.objects.values_list("pk", flat=True)),
+            "default_tax_rate": TaxConfiguration.current().default_rate,
         }
 
     def identity(self, data):
@@ -63,7 +66,10 @@ class ProductImporter(BaseImporter):
         if price is None and not errors:
             errors.append("selling_price is required.")
         cost = _dec(row.get("cost_price"), "cost_price", errors, Decimal("0.00"))
-        tax = _dec(row.get("tax_rate"), "tax_rate", errors, Decimal("0.00"))
+        tax_default = ctx.get("default_tax_rate", Decimal("0.00"))
+        if mode == "update" and sku.lower() in ctx["skus"] and row.get("tax_rate") in ("", None):
+            tax_default = ctx["tax_rates"][ctx["skus"][sku.lower()]]
+        tax = _dec(row.get("tax_rate"), "tax_rate", errors, tax_default)
         if tax is not None and tax > 100:
             errors.append("tax_rate: must be at most 100.")
         qty_raw = (row.get("quantity") or "").strip()
